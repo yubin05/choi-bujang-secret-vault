@@ -15,7 +15,7 @@ test('2단계 빌드는 원본과 이전 정적 파일의 메모를 공개하지
       await copyFile(new URL(`../scripts/${file}`, import.meta.url), join(root, 'scripts', file));
     }
     const config = JSON.parse(await readFile(new URL('../aleph.config.json', import.meta.url)));
-    assert.equal(config.step, 2);
+    assert.ok(config.step >= 2);
     await writeFile(join(root, 'aleph.config.json'), JSON.stringify(config));
     const privateData = JSON.stringify({ notes: [{ title: 'test', content: 'PRIVATE_SENTINEL' }] });
     await writeFile(join(root, 'data.json'), privateData);
@@ -28,7 +28,7 @@ test('2단계 빌드는 원본과 이전 정적 파일의 메모를 공개하지
         VERCEL_URL: 'test-deployment.vercel.app' },
     });
     const identity = JSON.parse(await readFile(join(root, 'public', 'aleph.json')));
-    assert.equal(identity.step, 2);
+    assert.equal(identity.step, config.step);
     assert.equal(identity.repoUrl, 'https://github.com/test-owner/test-repo');
     assert.deepEqual(JSON.parse(await readFile(new URL('../data.json', import.meta.url))).notes, []);
     await assert.rejects(readFile(new URL('../public/data.json', import.meta.url)), { code: 'ENOENT' });

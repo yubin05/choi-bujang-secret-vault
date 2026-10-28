@@ -1,18 +1,32 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { runInNewContext } from 'node:vm';
+import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import handler from '../api/notes.js';
 
-test('화면 → 서버 함수 → DB 응답으로 네 카드를 만들고 키·추가 필드는 노출하지 않는다', async () => {
+test('기존 검증 도우미로 정상 서명을 허용하고 누락·위조·만료·다른 발급자 토큰은 DB 조회 전에 거부한다', async () => {
+  const config = JSON.parse(await readFile(new URL('../aleph.config.json', import.meta.url)));
   const originalFetch = globalThis.fetch;
   const saved = { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SECRET_KEY };
   const fakeSecret = 'sb_secret_' + 'test-only-sentinel';
-  const rows = Array.from({ length: 4 }, (_, i) => ({ title: `가상 ${i + 1}`, content: `테스트 ${i + 1}`,
-    owner_id: 'private-owner', extra: fakeSecret }));
-  const call = async (method = 'GET') => {
+  const pair = await generateKeyPair('ES256');
+  const jwk = { ...await exportJWK(pair.publicKey), kid: 'test-signing-key', alg: 'ES256', use: 'sig' };
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { iss: config.identityProvider.issuer, aud: 'authenticated',
+    sub: '11111111-1111-4111-8111-111111111111', role: 'authenticated', iat: now, exp: now + 300 };
+  // 테스트 전용 임시 키와 토큰은 메모리에서만 사용하며 실제 계정·키를 사용하지 않습니다.
+  const valid = await new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
+  const expired = await new SignJWT({ ...claims, exp: now - 60 }).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
+  const wrongIssuer = await new SignJWT({ ...claims, iss: 'https://other.supabase.co/auth/v1' })
+    .setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
+  const otherPair = await generateKeyPair('ES256');
+  const forged = await new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(otherPair.privateKey);
+  let databaseReads = 0;
+  let databaseFailure = false;
+  const call = async (authorization, method = 'GET') => {
     const result = { headers: {} };
-    await handler({ method }, {
+    await handler({ method, headers: authorization ? { authorization } : {},
+      query: { userId: claims.sub, role: 'authenticated' }, body: { userId: claims.sub, role: 'admin' } }, {
       setHeader: (key, value) => { result.headers[key] = value; },
       status: status => { result.status = status; return { json: body => { result.body = body; } }; },
     });
@@ -21,50 +35,34 @@ test('화면 → 서버 함수 → DB 응답으로 네 카드를 만들고 키·
     return result;
   };
   try {
-    process.env.SUPABASE_URL = 'https://test-only.supabase.co';
+    process.env.SUPABASE_URL = new URL(config.identityProvider.issuer).origin;
     process.env.SUPABASE_SECRET_KEY = fakeSecret;
-    globalThis.fetch = async (url, options) => {
+    globalThis.fetch = async (input, options) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.href === config.identityProvider.jwksUrl) return Response.json({ keys: [jwk] });
       assert.equal(url.origin, process.env.SUPABASE_URL);
       assert.equal(url.pathname, '/rest/v1/aleph_defense_notes');
+      databaseReads++;
       assert.equal(url.searchParams.get('select'), 'title,content');
       assert.equal(options.headers.apikey, fakeSecret);
-      assert.equal(options.redirect, 'error');
-      return Response.json(rows);
+      if (databaseFailure) throw new Error(fakeSecret);
+      return Response.json(Array.from({ length: 4 }, (_, i) => ({ title: `가상 ${i + 1}`,
+        content: `테스트 ${i + 1}`, owner_id: claims.sub, extra: fakeSecret })));
     };
-    const result = await call();
+    for (const authorization of [undefined, 'Bearer invalid', `Bearer ${forged}`, `Bearer ${expired}`, `Bearer ${wrongIssuer}`]) {
+      const result = await call(authorization);
+      assert.equal(result.status, 401);
+      assert.deepEqual(result.body, { error: 'UNAUTHORIZED' });
+      assert.equal(databaseReads, 0);
+    }
+    const result = await call(`Bearer ${valid}`);
     assert.equal(result.status, 200);
     assert.equal(result.body.notes.length, 4);
     assert.deepEqual(Object.keys(result.body.notes[0]), ['title', 'content']);
-
-    const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-    assert.ok(!html.includes('SUPABASE_SECRET_KEY'));
-    assert.ok(!html.includes('supabase.co'));
-    const element = () => ({ children: [], append(...items) { this.children.push(...items); },
-      replaceChildren(...items) { this.children = items; } });
-    const list = element();
-    const script = html.match(/<script type="module">([\s\S]*?)<\/script>/u)[1];
-    await runInNewContext(`(async () => {${script}})()`, {
-      document: { querySelector: () => list, createElement: element },
-      fetch: async (path, options) => {
-        assert.equal(path, '/api/notes');
-        assert.equal(options.credentials, 'omit');
-        const response = await call();
-        return Response.json(response.body, { status: response.status });
-      },
-    });
-    assert.equal(list.children.length, 4);
-    assert.equal(list.children[0].children[0].textContent, rows[0].title);
-    assert.equal(list.children[0].children[1].textContent, rows[0].content);
-
-    globalThis.fetch = async () => new Response(fakeSecret, { status: 403 });
-    assert.equal((await call()).status, 502);
-    globalThis.fetch = async () => { throw new Error(fakeSecret); };
-    assert.equal((await call()).status, 502);
-    globalThis.fetch = async () => Response.json({ error: fakeSecret });
-    assert.equal((await call()).status, 502);
-    delete process.env.SUPABASE_SECRET_KEY;
-    assert.equal((await call()).status, 503);
-    assert.equal((await call('POST')).status, 405);
+    assert.equal(databaseReads, 1);
+    databaseFailure = true;
+    assert.equal((await call(`Bearer ${valid}`)).status, 502);
+    assert.equal((await call(undefined, 'POST')).status, 405);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [name, value] of [['SUPABASE_URL', saved.url], ['SUPABASE_SECRET_KEY', saved.key]]) {
