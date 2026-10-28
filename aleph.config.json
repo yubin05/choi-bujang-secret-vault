@@ -10,7 +10,11 @@
     "jwksUrl": "https://sxyyvwzxgukjpfavqocu.supabase.co/auth/v1/.well-known/jwks.json"
   },
   "allowedRoutes": [
-    { "service": "notes", "method": "GET", "pathPattern": "/api/notes", "zone": "notes" }
+    { "service": "notes", "method": "GET", "pathPattern": "/api/notes", "zone": "notes" },
+    { "service": "notes", "method": "POST", "pathPattern": "/api/notes", "zone": "notes" },
+    { "service": "notes", "method": "GET", "pathPattern": "/api/notes/:id", "zone": "notes" },
+    { "service": "notes", "method": "PUT", "pathPattern": "/api/notes/:id", "zone": "notes" },
+    { "service": "notes", "method": "DELETE", "pathPattern": "/api/notes/:id", "zone": "notes" }
   ],
   "originalApiUrl": null,
   "restoreRoute": null

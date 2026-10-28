@@ -23,6 +23,8 @@
     button { cursor: pointer; }
     button:disabled { cursor: wait; opacity: .6; }
     #auth-message { min-height: 1.7em; }
+    textarea { min-height: 100px; padding: 10px 12px; font: inherit; border: 1px solid #51667c; border-radius: 8px; }
+    li span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2" defer></script>
   <script src="/auth-config.js" defer></script>
@@ -45,7 +47,17 @@
       <button id="logout-button" type="button" hidden>로그아웃</button>
       <p id="auth-message" role="status" aria-live="polite"></p>
     </section>
-    <ul id="notes" aria-live="polite" hidden></ul>
+    <section id="note-workspace" aria-labelledby="note-heading" hidden>
+      <h2 id="note-heading">내 가상 메모</h2>
+      <form id="note-form">
+        <label>제목<input id="note-title" name="title" maxlength="120" required></label>
+        <label>내용<textarea id="note-body" name="body" maxlength="10000" required></textarea></label>
+        <button id="note-save" type="submit">메모 추가</button>
+        <button id="note-cancel" type="button" hidden>수정 취소</button>
+      </form>
+      <p id="note-message" role="status" aria-live="polite"></p>
+      <ul id="notes" aria-live="polite" hidden></ul>
+    </section>
   </main>
 </body>
 </html>
