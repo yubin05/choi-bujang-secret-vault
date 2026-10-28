@@ -16,7 +16,17 @@
     li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
     strong { display: block; font-size: 18px; margin-bottom: 5px; }
     li span { color: #bfd0e5; }
+    [hidden] { display: none !important; }
+    form { display: grid; gap: 12px; max-width: 420px; }
+    label { display: grid; gap: 6px; }
+    input, button { padding: 10px 12px; border: 1px solid #51667c; border-radius: 8px; font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .6; }
+    #auth-message { min-height: 1.7em; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2" defer></script>
+  <script src="/auth-config.js" defer></script>
+  <script src="/auth.js" defer></script>
 </head>
 <body>
   <main>
@@ -24,6 +34,17 @@
     <h1>가상 자료실</h1>
     <p>실습용 가상 메모를 서버 함수를 통해 불러옵니다. 실제 개인정보는 넣지 마세요.</p>
     <div class="notice">아직 공개 조회 단계입니다. 로그인하지 않은 방문자도 서버 함수를 통해 가상 메모를 볼 수 있습니다.</div>
+    <section aria-labelledby="auth-title">
+      <h2 id="auth-title">로그인</h2>
+      <p id="auth-state" role="status">로그인 상태 확인 중…</p>
+      <form id="login-form">
+        <label>이메일<input id="login-email" name="email" type="email" autocomplete="username" required></label>
+        <label>비밀번호<input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+        <button id="login-button" type="submit" disabled>로그인</button>
+      </form>
+      <button id="logout-button" type="button" hidden>로그아웃</button>
+      <p id="auth-message" role="status" aria-live="polite"></p>
+    </section>
     <ul id="notes" aria-live="polite"><li>가상 자료를 불러오는 중입니다.</li></ul>
   </main>
   <script type="module">
