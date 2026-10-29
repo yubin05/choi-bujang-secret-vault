@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -26,7 +26,7 @@ export async function runAttackChecks(config) {
     }
     const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
       observed: `HTTP ${response.status}; 공개 메모 제거 ${empty ? '확인' : '미확인'}` }];
-    if (config.step === 3) {
+    if (config.step >= 3) {
       for (const invalid of [false, true]) {
         const result = await fetch(new URL('/api/notes', app), {
           redirect: 'error', signal: AbortSignal.timeout(10000),

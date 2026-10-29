@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import handler from '../api/notes.js';
 
-test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하고 무인증·위조 토큰을 거부한다', async () => {
+test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조 토큰을 거부한다', async () => {
   const config = JSON.parse(await readFile(new URL('../aleph.config.json', import.meta.url)));
   const routing = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url)));
   assert.ok(routing.rewrites.some(route => route.source === '/api/notes/:id'
@@ -22,6 +22,9 @@ test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하�
     sub: '11111111-1111-4111-8111-111111111111', role: 'authenticated', iat: now, exp: now + 300 };
   // 테스트 전용 임시 키와 토큰은 메모리에서만 사용하며 실제 계정·키를 사용하지 않습니다.
   const valid = await new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
+  const bId = '55555555-5555-4555-8555-555555555555';
+  const validB = await new SignJWT({ ...claims, sub: bId })
+    .setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
   const expired = await new SignJWT({ ...claims, exp: now - 60 }).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
   const wrongIssuer = await new SignJWT({ ...claims, iss: 'https://other.supabase.co/auth/v1' })
     .setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
@@ -37,7 +40,7 @@ test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하�
   const call = async (authorization, method = 'GET', body, id) => {
     const result = { headers: {} };
     await handler({ method, headers: authorization ? { authorization } : {},
-      query: { userId: claims.sub, role: 'authenticated', ...(id !== undefined ? { id } : {}) },
+      query: { owner_id: claims.sub, userId: claims.sub, role: 'authenticated', ...(id !== undefined ? { id } : {}) },
       body: body ?? { userId: claims.sub, role: 'admin' } }, {
       setHeader: (key, value) => { result.headers[key] = value; },
       status: status => { result.status = status; return {
@@ -61,29 +64,35 @@ test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하�
       assert.equal(options.headers.apikey, fakeSecret);
       if (databaseFailure) throw new Error(fakeSecret);
       const id = url.searchParams.get('id')?.slice(3);
+      const owner = url.searchParams.get('owner_id')?.slice(3);
+      if (options.method !== 'POST') assert.ok([claims.sub, bId].includes(owner));
       if (options.method === 'POST') {
         const row = JSON.parse(options.body);
-        assert.equal(row.owner_id, claims.sub);
+        assert.ok([claims.sub, bId].includes(row.owner_id));
         if (store.has(row.id)) return Response.json({}, { status: 409 });
         store.set(row.id, row);
         return Response.json([row]);
       }
       if (options.method === 'PATCH') {
         const row = store.get(id);
-        if (!row) return Response.json([]);
+        if (!row || row.owner_id !== owner) return Response.json([]);
         const changes = JSON.parse(options.body);
-        assert.deepEqual(Object.keys(changes).sort(), ['content', 'title']);
+        assert.deepEqual(Object.keys(changes).sort(), ['content', 'owner_id', 'title']);
+        assert.equal(changes.owner_id, row.owner_id);
         Object.assign(row, changes);
         return Response.json([row]);
       }
       if (options.method === 'DELETE') {
         const row = store.get(id);
+        if (!row || row.owner_id !== owner) return Response.json([]);
         store.delete(id);
         return Response.json(row ? [row] : []);
       }
-      if (id) return Response.json(store.has(id) ? [store.get(id)] : []);
-      assert.equal(url.searchParams.get('owner_id'), `eq.${claims.sub}`);
-      return Response.json([...store.values()].filter(row => row.owner_id === claims.sub));
+      if (id) {
+        const row = store.get(id);
+        return Response.json(row && row.owner_id === owner ? [row] : []);
+      }
+      return Response.json([...store.values()].filter(row => row.owner_id === owner));
     };
     for (const authorization of [undefined, 'Bearer invalid', `Bearer ${forged}`, `Bearer ${expired}`, `Bearer ${wrongIssuer}`]) {
       const result = await call(authorization);
@@ -108,7 +117,12 @@ test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하�
     const id = created.body.id;
     assert.equal(store.get(id).owner_id, claims.sub);
     assert.deepEqual((await call(token, 'GET', undefined, id)).body, { id, title: '가상 추가', body: '가상 본문' });
-    const edited = await call(token, 'PUT', { title: '수정', body: '수정 본문', owner_id: 'untrusted' }, id);
+    const beforeOwnerChange = databaseReads;
+    const transfer = await call(token, 'PUT', { title: '수정', body: '수정 본문', owner_id: bId }, id);
+    assert.equal(transfer.status, 400);
+    assert.equal(databaseReads, beforeOwnerChange);
+    assert.equal(store.get(id).owner_id, claims.sub);
+    const edited = await call(token, 'PUT', { title: '수정', body: '수정 본문' }, id);
     assert.equal(edited.status, 200);
     assert.equal(edited.body.body, '수정 본문');
     assert.equal(store.get(id).owner_id, claims.sub);
@@ -122,6 +136,34 @@ test('검증된 A의 메모 CRUD·소유자 저장·삭제 후 404를 지원하�
     const unowned = '44444444-4444-4444-8444-444444444444';
     store.set(unowned, { id: unowned, title: '기존', content: '가상', owner_id: null });
     assert.ok(!(await call(token)).body.some(note => note.id === unowned));
+    const bToken = `Bearer ${validB}`;
+    const bCreated = await call(bToken, 'POST', { title: 'B 시험', body: 'B 가상', owner_id: claims.sub });
+    assert.equal(bCreated.status, 201);
+    const bNoteId = bCreated.body.id;
+    assert.equal(store.get(bNoteId).owner_id, bId);
+    const aNoteId = explicitId;
+    const beforeCrossAccess = JSON.stringify([...store]);
+    for (const [actor, target] of [[token, bNoteId], [bToken, aNoteId]]) {
+      for (const method of ['GET', 'PUT', 'DELETE']) {
+        const result = await call(actor, method, { title: '변경 시도', body: '가상' }, target);
+        assert.equal(result.status, 404);
+        assert.deepEqual(result.body, { error: 'NOTE_NOT_FOUND' });
+      }
+    }
+    assert.equal(JSON.stringify([...store]), beforeCrossAccess);
+    assert.ok(!(await call(token)).body.some(note => note.id === bNoteId));
+    assert.deepEqual((await call(bToken)).body.map(note => note.id), [bNoteId]);
+    assert.equal((await call(bToken, 'GET', undefined, bNoteId)).status, 200);
+    assert.equal((await call(bToken, 'PUT', { title: 'B 수정', body: 'B 수정 본문' }, bNoteId)).status, 200);
+    const beforeBTransfer = databaseReads;
+    assert.equal((await call(bToken, 'PUT', { title: '이전', body: '가상', owner_id: claims.sub }, bNoteId)).status, 400);
+    assert.equal(databaseReads, beforeBTransfer);
+    assert.equal(store.get(bNoteId).owner_id, bId);
+    assert.equal((await call(bToken, 'DELETE', undefined, bNoteId)).status, 204);
+    assert.equal((await call(bToken, 'GET', undefined, bNoteId)).status, 404);
+    for (const method of ['GET', 'PUT', 'DELETE']) {
+      assert.equal((await call(token, method, { title: '가상', body: '가상' }, unowned)).status, 404);
+    }
     databaseFailure = true;
     assert.equal((await call(`Bearer ${valid}`)).status, 502);
     assert.equal((await call(undefined, 'PATCH')).status, 405);

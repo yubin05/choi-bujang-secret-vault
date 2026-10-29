@@ -50,6 +50,7 @@ export default async function handler(request, response) {
     try {
       input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
       if (!input || typeof input !== 'object' || Array.isArray(input)
+          || (request.method === 'PUT' && Object.keys(input).some(key => !['title', 'body'].includes(key)))
           || typeof input.title !== 'string' || !input.title.trim() || input.title.length > 120
           || typeof input.body !== 'string' || !input.body.trim() || input.body.length > 10000
           || (request.method === 'POST' && input.id !== undefined
@@ -63,9 +64,9 @@ export default async function handler(request, response) {
     const url = new URL('/rest/v1/aleph_defense_notes', base);
     url.searchParams.set('select', 'id,title,content');
     if (single) {
-      // 3단계의 의도된 한계: 단건 조회·수정·삭제는 로그인만 검사합니다.
-      // 4단계에서 이 id 조건에 소유자 조건을 추가합니다.
+      // 기존 행의 소유자를 같은 DB 작업의 조건에 포함합니다.
       url.searchParams.set('id', `eq.${id}`);
+      url.searchParams.set('owner_id', `eq.${identity.userId}`);
     } else if (request.method === 'GET') {
       url.searchParams.set('owner_id', `eq.${identity.userId}`);
       url.searchParams.set('order', 'id.asc');
@@ -75,9 +76,10 @@ export default async function handler(request, response) {
     if (input) {
       headers['Content-Type'] = 'application/json';
       body = { title: input.title.trim(), content: input.body };
+      // 새 행도 검증된 소유자에 고정하여 소유자 이전을 막습니다.
+      body.owner_id = identity.userId;
       if (request.method === 'POST') {
         body.id = input.id ?? randomUUID();
-        body.owner_id = identity.userId;
       }
     }
     const upstream = await fetch(url, {
