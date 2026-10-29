@@ -1,5 +1,26 @@
 # BYTE BACK 방어전 시작 틀 R5
 
+## 5단계 준비: 메모 자료 요청을 서버로 통일
+
+브라우저 메모 CRUD는 `/api/notes`와 `/api/notes/:id`를 사용합니다.
+기존 서버 함수의 로그인·소유자 검사와 서버 전용 환경변수는 변경하지 않았습니다.
+공개 키는 Supabase Auth 로그인에만 계속 사용하며, 로그인 동작을 옮기는 선택 가점 작업은 하지 않았습니다.
+`originalApiUrl`에는 쿼리·키가 없는 원본 메모 REST HTTPS 경로를 기록했고 단계는 5로 설정했습니다.
+
+검토할 SQL: `sql/step5-revoke-direct-access.sql`. 아직 DB에 실행하지 않았습니다.
+SQL Editor에서 실행 전·후 결과를 비교합니다. PUBLIC·anon·authenticated의 해당 테이블 직접 권한과
+열 권한만 회수하며 메모, 기존 RLS 정책, 다른 테이블은 변경하지 않습니다.
+적용 후 anon·authenticated의 실제 테이블·열 권한은 모두 false,
+서버용 service_role의 SELECT·INSERT·UPDATE·DELETE는 true여야 합니다.
+상속 권한이 남거나 서버 권한이 없으면 예외로 전체 변경을 취소하며 다른 역할·테이블을 자동 변경하지 않습니다.
+PostgreSQL 17 미만의 MAINTAIN 결과 NULL은 해당 버전에 권한 종류가 없다는 뜻입니다.
+
+서버 CRUD와 화면 연결은 로컬 A/B 모의 테스트로 확인했습니다. 실제 A 계정 쓰기 전 과정은 미검증입니다.
+SQL 적용 전후 A 로그인 → 본인 메모 목록·추가·수정·삭제를 직접 확인해 정상 동작을 비교합니다.
+B의 타인 메모 조회·수정·삭제는 404, 무로그인은 401이어야 합니다.
+원본 직접 요청은 심판이 anon 키로 확인합니다. 여기서는 차단 통과나 SQL 적용 완료라고 기록하지 않습니다.
+로컬 검증: `node --test test/*.test.mjs`, 빌드: `npm run build -- --local`.
+
 ## 4단계 저장점: API 소유자 검사
 
 저장점 이름: **4단계 저장점**. 구현 커밋은 `7337a55`이며 이번 저장점은 점검 기록을 갱신합니다.

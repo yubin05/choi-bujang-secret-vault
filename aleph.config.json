@@ -1,5 +1,5 @@
 {
-  "step": 4,
+  "step": 5,
   "repoUrl": "https://github.com/yubin05/choi-bujang-secret-vault",
   "publicAppUrl": "https://choi-bujang-secret-vault-two-inky.vercel.app",
   "sampleMarker": "SAMPLE_NOTE_1",
@@ -16,6 +16,6 @@
     { "service": "notes", "method": "PUT", "pathPattern": "/api/notes/:id", "zone": "notes" },
     { "service": "notes", "method": "DELETE", "pathPattern": "/api/notes/:id", "zone": "notes" }
   ],
-  "originalApiUrl": null,
+  "originalApiUrl": "https://sxyyvwzxgukjpfavqocu.supabase.co/rest/v1/aleph_defense_notes",
   "restoreRoute": null
 }
