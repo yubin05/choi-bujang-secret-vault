@@ -14,11 +14,11 @@
   const save = document.querySelector('#note-save');
   const cancel = document.querySelector('#note-cancel');
   const noteMessage = document.querySelector('#note-message');
-  let client;
   let requestVersion = 0;
   let activeSession = null;
   let editingId = null;
   let busy = false;
+  let signingOut = false;
 
   const resetEditor = () => {
     editingId = null;
@@ -28,14 +28,37 @@
     cancel.hidden = true;
   };
 
-  const noteRequest = async (session, path, method = 'GET', body) => {
+  const authRequest = async (action, body) => {
+    const response = await fetch(`/api/auth/${action}`, {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || (action === 'login'
+      ? '로그인 정보를 확인하세요.' : '로그인 요청에 실패했습니다. 잠시 후 다시 시도하세요.'));
+    return result;
+  };
+  // 여러 메모 요청이 동시에 만료되어도 갱신 요청은 하나만 보냅니다.
+  let checkingSession;
+  const checkSession = () => checkingSession ??= authRequest('session')
+    .finally(() => { checkingSession = null; });
+
+  const noteRequest = async (session, path, method = 'GET', body, retry = true) => {
     const response = await fetch(path, {
-      method, credentials: 'omit', cache: 'no-store',
-      headers: { Authorization: `Bearer ${session.access_token}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      method, credentials: 'same-origin', cache: 'no-store',
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (response.status === 401) throw new Error('로그인 확인에 실패했습니다. 다시 로그인하세요.');
+    if (response.status === 401) {
+      if (retry && !signingOut && activeSession === session) {
+        const restored = await checkSession();
+        if (activeSession === session && restored.user?.id === session.user.id) {
+          return noteRequest(session, path, method, body, false);
+        }
+        if (activeSession === session) render(null);
+      }
+      throw new Error('로그인 확인에 실패했습니다. 다시 로그인하세요.');
+    }
     if (response.status === 404) throw new Error('메모가 없거나 이미 삭제되었습니다.');
     if (response.status === 409) throw new Error('같은 ID의 메모가 이미 있습니다.');
     if (response.status === 400) throw new Error('제목·내용과 메모 ID 형식을 확인하세요.');
@@ -125,45 +148,18 @@
     if (!signedIn) password.value = '';
   };
   const showError = (error, action) => {
-    const reasons = {
-      invalid_credentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
-      invalid_login_credentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
-      email_not_confirmed: '이메일 인증이 완료되지 않았습니다.',
-      email_provider_disabled: '이 프로젝트에서 이메일 로그인이 비활성화되어 있습니다.',
-      over_request_rate_limit: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
-      over_email_send_rate_limit: '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
-      user_banned: '사용이 제한된 계정입니다.',
-    };
-    message.textContent = reasons[error?.code]
-      || (error?.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도하세요.'
-        : error?.status === 400 ? '로그인 정보를 확인하세요. 이메일·비밀번호 또는 이메일 인증 상태가 올바르지 않습니다.'
-          : `${action}하지 못했습니다. 네트워크와 Supabase Auth 설정을 확인하세요.`);
+    message.textContent = error?.message || `${action}하지 못했습니다. 연결 상태를 확인하세요.`;
   };
-
-  try {
-    const config = globalThis.SUPABASE_PUBLIC_CONFIG;
-    if (!globalThis.supabase?.createClient || !config?.url
-        || !config.publishableKey?.startsWith('sb_publishable_')) throw new Error();
-    client = globalThis.supabase.createClient(config.url, config.publishableKey);
-    // 세션과 토큰은 공식 SDK에 맡기며 화면·로그에 출력하지 않습니다.
-    client.auth.onAuthStateChange((_event, session) => render(session));
-    login.disabled = false;
-  } catch {
-    state.textContent = '로그인을 사용할 수 없음';
-    list.replaceChildren();
-    list.hidden = true;
-    workspace.hidden = true;
-    message.textContent = '로그인 SDK를 불러오지 못했거나 공개 연결 설정이 올바르지 않습니다. 새로고침 후 다시 확인하세요.';
-    return;
-  }
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
     login.disabled = true;
     message.textContent = '로그인 중…';
     try {
-      const { data, error } = await client.auth.signInWithPassword({ email: email.value.trim(), password: password.value });
-      if (error) { showError(error, '로그인'); return; }
+      await authRequest('login', { email: email.value.trim(), password: password.value });
+      const session = await checkSession();
+      if (!session.user) throw new Error('로그인 상태를 확인하지 못했습니다. 다시 로그인하세요.');
+      render(session);
       message.textContent = '로그인했습니다.';
     } catch (error) {
       showError(error, '로그인');
@@ -204,17 +200,25 @@
   });
 
   logout.addEventListener('click', async () => {
+    signingOut = true;
     logout.disabled = true;
     message.textContent = '로그아웃 중…';
     try {
-      const { error } = await client.auth.signOut({ scope: 'local' });
-      if (error) { showError(error, '로그아웃'); return; }
+      if (checkingSession) await checkingSession;
+      await authRequest('logout');
       render(null);
       message.textContent = '로그아웃했습니다.';
     } catch (error) {
       showError(error, '로그아웃');
     } finally {
+      signingOut = false;
       logout.disabled = false;
     }
   });
+
+  render(null);
+  state.textContent = '로그인 상태 확인 중…';
+  void checkSession().then(session => render(session.user ? session : null))
+    .catch(error => { render(null); showError(error, '로그인 상태를 확인'); })
+    .finally(() => { login.disabled = false; });
 })();

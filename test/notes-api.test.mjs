@@ -37,9 +37,9 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     return [id, { id, title: `가상 ${i + 1}`, content: `테스트 ${i + 1}`,
       owner_id: claims.sub, extra: fakeSecret }];
   }));
-  const call = async (authorization, method = 'GET', body, id) => {
+  const call = async (authorization, method = 'GET', body, id, extraHeaders = {}) => {
     const result = { headers: {} };
-    await handler({ method, headers: authorization ? { authorization } : {},
+    await handler({ method, headers: { ...(authorization ? { authorization } : {}), ...extraHeaders },
       query: { owner_id: claims.sub, userId: claims.sub, role: 'authenticated', ...(id !== undefined ? { id } : {}) },
       body: body ?? { userId: claims.sub, role: 'admin' } }, {
       setHeader: (key, value) => { result.headers[key] = value; },
@@ -110,6 +110,20 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     assert.equal(result.body.length, 4);
     assert.deepEqual(Object.keys(result.body[0]), ['id', 'title', 'body']);
     assert.equal(databaseReads, 1);
+    const cookie = `__Host-aleph-access=${encodeURIComponent(valid)}`;
+    assert.equal((await call(undefined, 'GET', undefined, undefined, { cookie })).status, 200);
+    const beforeCsrf = databaseReads;
+    assert.equal((await call(undefined, 'POST', { title: '가상', body: '시험' }, undefined,
+      { cookie, origin: 'https://other.example' })).status, 403);
+    assert.equal((await call('Bearer invalid', 'GET', undefined, undefined, { cookie })).status, 401);
+    assert.equal((await call(undefined, 'GET', undefined, undefined, { cookie: `${cookie}; ${cookie}` })).status, 401);
+    assert.equal(databaseReads, beforeCsrf);
+    const cookieCreated = await call(undefined, 'POST', { title: '쿠키 시험', body: '가상 시험' }, undefined,
+      { cookie, origin: new URL(config.publicAppUrl).origin });
+    assert.equal(cookieCreated.status, 201);
+    assert.equal(store.get(cookieCreated.body.id).owner_id, claims.sub);
+    assert.equal((await call(undefined, 'DELETE', undefined, cookieCreated.body.id,
+      { cookie, origin: new URL(config.publicAppUrl).origin })).status, 204);
     const token = `Bearer ${valid}`;
     const created = await call(token, 'POST', { title: '가상 추가', body: '가상 본문', owner_id: 'untrusted-user', role: 'admin' });
     assert.equal(created.status, 201);

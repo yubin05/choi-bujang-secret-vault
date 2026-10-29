@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createLoginVerifier } from '../src/verify-login.mjs';
+import { sameOrigin, sessionCookie } from '../src/auth-session.mjs';
 
 const config = JSON.parse(readFileSync(new URL('../aleph.config.json', import.meta.url), 'utf8'));
 let verifyAuthorization;
@@ -16,9 +17,14 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
   }
 
-  const authorization = request.headers?.authorization;
+  const explicitAuthorization = request.headers?.authorization;
+  const access = explicitAuthorization === undefined ? sessionCookie(request, 'access') : null;
+  const authorization = explicitAuthorization ?? (access ? `Bearer ${access}` : undefined);
   if (typeof authorization !== 'string' || !authorization) {
     return response.status(401).json({ error: 'UNAUTHORIZED' });
+  }
+  if (explicitAuthorization === undefined && request.method !== 'GET' && !sameOrigin(request)) {
+    return response.status(403).json({ error: 'ORIGIN_NOT_ALLOWED' });
   }
 
   const secret = process.env.SUPABASE_SECRET_KEY;
