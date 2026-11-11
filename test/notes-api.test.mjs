@@ -9,9 +9,6 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
   const routing = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url)));
   assert.ok(routing.rewrites.some(route => route.source === '/api/notes/:id'
     && route.destination === '/api/notes?id=:id'));
-  assert.deepEqual(config.allowedRoutes.map(route => `${route.method} ${route.pathPattern}`).sort(), [
-    'GET /api/notes', 'POST /api/notes', 'GET /api/notes/:id', 'PUT /api/notes/:id', 'DELETE /api/notes/:id',
-  ].sort());
   const originalFetch = globalThis.fetch;
   const saved = { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SECRET_KEY };
   const fakeSecret = 'sb_secret_' + 'test-only-sentinel';
@@ -32,6 +29,9 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
   const forged = await new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(otherPair.privateKey);
   let databaseReads = 0;
   let databaseFailure = false;
+  let ignoreOwnerFilter = false;
+  const logs = [];
+  const originalWarn = console.warn;
   const store = new Map(Array.from({ length: 4 }, (_, i) => {
     const id = `22222222-2222-4222-8222-${String(i + 1).padStart(12, '0')}`;
     return [id, { id, title: `가상 ${i + 1}`, content: `테스트 ${i + 1}`,
@@ -49,9 +49,11 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     });
     assert.ok(!JSON.stringify(result).includes(fakeSecret));
     assert.equal(result.headers['Cache-Control'], 'no-store');
+    assert.equal(result.headers['X-Resource-Id'], 'notes.own');
     return result;
   };
   try {
+    console.warn = message => logs.push(String(message));
     process.env.SUPABASE_URL = new URL(config.identityProvider.issuer).origin;
     process.env.SUPABASE_SECRET_KEY = fakeSecret;
     globalThis.fetch = async (input, options) => {
@@ -60,7 +62,7 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
       assert.equal(url.origin, process.env.SUPABASE_URL);
       assert.equal(url.pathname, '/rest/v1/aleph_defense_notes');
       databaseReads++;
-      assert.equal(url.searchParams.get('select'), 'id,title,content');
+      assert.equal(url.searchParams.get('select'), 'id,title,content,owner_id');
       assert.equal(options.headers.apikey, fakeSecret);
       if (databaseFailure) throw new Error(fakeSecret);
       const id = url.searchParams.get('id')?.slice(3);
@@ -90,9 +92,9 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
       }
       if (id) {
         const row = store.get(id);
-        return Response.json(row && row.owner_id === owner ? [row] : []);
+        return Response.json(row && (ignoreOwnerFilter || row.owner_id === owner) ? [row] : []);
       }
-      return Response.json([...store.values()].filter(row => row.owner_id === owner));
+      return Response.json([...store.values()].filter(row => ignoreOwnerFilter || row.owner_id === owner));
     };
     for (const authorization of [undefined, 'Bearer invalid', `Bearer ${forged}`, `Bearer ${expired}`, `Bearer ${wrongIssuer}`]) {
       const result = await call(authorization);
@@ -178,10 +180,28 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     for (const method of ['GET', 'PUT', 'DELETE']) {
       assert.equal((await call(token, method, { title: '가상', body: '가상' }, unowned)).status, 404);
     }
+    // DB의 소유자 조건이 빠져 남의 행이 섞여 와도 API가 저장된 소유자를 다시 대조합니다.
+    const bOnly = '66666666-6666-4666-8666-666666666666';
+    store.set(bOnly, { id: bOnly, title: 'B 전용', content: '가상', owner_id: bId });
+    ignoreOwnerFilter = true;
+    const mixed = await call(token);
+    assert.equal(mixed.status, 200);
+    assert.ok(mixed.body.length > 0 && mixed.body.every(note => store.get(note.id).owner_id === claims.sub));
+    for (const target of [bOnly, unowned]) {
+      const leaked = await call(token, 'GET', undefined, target);
+      assert.deepEqual([leaked.status, leaked.body], [404, { error: 'NOTE_NOT_FOUND' }]);
+    }
+    ignoreOwnerFilter = false;
     databaseFailure = true;
     assert.equal((await call(`Bearer ${valid}`)).status, 502);
     assert.equal((await call(undefined, 'PATCH')).status, 405);
+    for (const reason of ['UNAUTHORIZED', 'ORIGIN_NOT_ALLOWED', 'NOT_OWNER_OR_MISSING', 'OWNER_MISMATCH',
+      'METHOD_NOT_ALLOWED']) {
+      assert.ok(logs.includes(`aleph.denied resource=notes.own reason=${reason}`), reason);
+    }
+    assert.ok(logs.every(line => ![claims.sub, bId, valid, validB, fakeSecret].some(value => line.includes(value))));
   } finally {
+    console.warn = originalWarn;
     globalThis.fetch = originalFetch;
     for (const [name, value] of [['SUPABASE_URL', saved.url], ['SUPABASE_SECRET_KEY', saved.key]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;

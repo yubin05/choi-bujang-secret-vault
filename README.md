@@ -1,5 +1,39 @@
 # BYTE BACK 방어전 시작 틀 R5
 
+## 8단계 저장점: 자료마다 갈 수 있는 구역을 나눕니다
+
+저장점 이름: **8단계 저장점**. `step: 8`로 올렸습니다. 배포 주소, 로그인 발급자, 원본 HTTPS 경로는
+이번 단계에서 바뀐 구현이 없어 7단계 값 그대로 대조했습니다. `allowedRoutes`에는 판정기가 허용하는 경로만
+`GET /api/notes/:id`, `GET /api/notices` 두 개를 메서드와 함께 적었습니다.
+`RULE_IDS`에는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`,
+`zone_notes`, `zone_notices`, `zone_instructor_materials`만 있습니다.
+7단계 저장점 `377d8b2`는 이후 GitHub에 푸시됐으며, 그 배포 반영 여부는 확인하지 않았습니다.
+
+자원 구역: 메모는 `notes.own`(`/api/notes`), 반 공지는 `notices.instructor`(새 `GET /api/notices`)입니다.
+공지 API는 로그인이 필요한 읽기 전용이며 가상 공지 2건만 돌려주고 DB를 쓰지 않습니다.
+두 API는 모든 응답에 `X-Resource-Id`를 붙입니다. 자원 ID는 경로로만 정하며 query·body로 바꿀 수 없습니다. 화면 메뉴는 바꾸지 않았습니다.
+
+판정기 구역 규칙: 메모는 ID 하나를 고르는 `GET /notes/:id`만 허용하고 전체 목록·쓰기는 `deny`·`route_not_allowed`입니다.
+반 공지는 `GET /notices`만 허용하고 쓰기는 재확인을 거쳐도 거부합니다. 강사 자료(`materials`)는 모두 거부하고,
+알 수 없는 서비스는 기존 `starter.deny`입니다. route와 실제 method·path 깊이가 다르면 거부하며 `:id` 형식은 좁히지 않습니다.
+언제나 거부할 요청에 재확인을 요구하지 않도록 구역 규칙을 `step_up_required`보다 먼저 봅니다. 판정기는 계약의 요청 이름만 읽습니다.
+
+자료 API: 메모 API는 DB 요청의 소유자 조건과 별도로 응답 행의 저장된 `owner_id`를 검증된 사용자와 다시 대조합니다.
+남의 메모와 없는 메모는 같은 404입니다. 강사 권한 저장소가 없어 누구도 강사로 보지 않으며 body·query·메뉴의 `role`은 읽지 않습니다.
+공지 쓰기는 누구에게나 405입니다. 거부 사유는 `aleph.denied resource=… reason=…` 한 줄로 서버 로그에 남기며
+토큰·사용자 ID·본문은 기록하지 않습니다. 로그인 확인은 `src/auth-session.mjs`의 `authenticateDataRequest`를 두 API가 함께 씁니다.
+
+확인 순서:
+1. `node --test test/*.test.mjs` → 25개 통과.
+2. `npm run decider:test` → 네 항목 모두 `통과`. `npm run fixture:7` → `allow`, `step_up`.
+3. 배포 후 A 로그인 → 개발자 도구 Console에서 `fetch('/api/notes')`는 200·본인 메모만, `fetch('/api/notices')`는 200·공지만.
+   `fetch('/api/notes/<아무 UUID>')`는 404, `fetch('/api/notices',{method:'POST'})`는 405, 시크릿 창의 `/api/notices`는 401이어야 합니다.
+
+2026-11-11 로컬 실행에서 1·2가 통과했고, 새로 복제한 저장소의 `npm install`도 오류 없이 끝났습니다. 가상 요청 연습·모의 시험이며 심판 판정이 아닙니다.
+이유 코드 `route_not_allowed`의 운영 등록부 포함 여부와 문자열 형식 `allowedRoutes`의 엔진 수용 여부는 미확인입니다.
+실제 A/B 계정의 다른 구역 직접 요청은 `src/attack-check.mjs`에 미실행으로 기록합니다. 강사 공지 관리 경로와 강사 권한 저장소는 아직 없습니다.
+이 저장점의 푸시·배포와 심판 판정은 아직 실행하지 않았습니다.
+
 ## 7단계 저장점: 평소와 다른 접속은 다시 확인합니다
 
 저장점 이름: **7단계 저장점**. `step: 7`로 올렸습니다. 배포 주소, 로그인 발급자, 메모 허용 경로 5개,

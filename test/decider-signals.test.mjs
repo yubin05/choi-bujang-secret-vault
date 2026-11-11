@@ -63,7 +63,7 @@ test('정해진 복합 사건은 추가 확인, 정상 사건은 허용입니다
   assert.equal((await decide(normal)).decision, 'allow');
   assert.deepEqual(await verdict(suspicious), STEP_UP);
   assert.deepEqual(await verdict({ ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } }),
-    { decision: 'allow', reasonCode: 'approved', ruleIds: ['device_registered', 'step_up_required'] });
+    { decision: 'allow', reasonCode: 'approved', ruleIds: ['device_registered', 'zone_notes', 'step_up_required'] });
 });
 
 test('조건 하나만 맞거나 지역만 다르면 차단하지 않습니다', async () => {
