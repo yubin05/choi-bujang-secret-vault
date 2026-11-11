@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -42,6 +42,11 @@ export async function runAttackChecks(config) {
           expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401',
           observed: `HTTP ${result.status}; 자료 없는 거부 ${rejected ? '확인' : '미확인'}` });
       }
+    }
+    if (config.step >= 6) {
+      attempts.push({ attackId: 'unregistered_device_read',
+        expected: '미등록 기기 요청은 deny·device_not_registered로 거부',
+        observed: '미실행: 미등록 기기 접속 시험은 심판이 수행' });
     }
     return attempts;
   }
