@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -59,6 +59,11 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'cross_zone_direct_api',
         expected: '메뉴를 우회한 직접 API 요청에서 남의 메모·공지 쓰기는 거부하고 본인 메모 읽기는 유지',
         observed: '미실행: 실제 A/B 로그인 요청은 보내지 않음(로컬 모의 시험만 통과)' });
+    }
+    if (config.step >= 9) {
+      attempts.push({ attackId: 'burst_read_revocation',
+        expected: '같은 가명 사용자의 10분 안 GET 121건 이상은 propose_revocation·burst_read, 정상 조회는 observe로 기기 유지',
+        observed: '미실행: 운영 반 엔진의 사건 전달·접속 회수 경로가 연결되지 않음(로컬 npm run detect:test만 통과)' });
     }
     return attempts;
   }
