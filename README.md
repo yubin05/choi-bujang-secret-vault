@@ -1,5 +1,79 @@
 # BYTE BACK 방어전 시작 틀 R5
 
+## 10단계 저장점: 백업에서 자료실을 되살립니다
+
+저장점 이름: **10단계 저장점**. `step: 10`으로 올렸습니다. 배포 주소, 로그인 발급자, 원본 HTTPS 경로는 바뀐 구현이 없어 9단계 값 그대로 대조했습니다.
+`allowedRoutes`는 판정기가 허용하는 `GET /api/notes/:id`, `POST /api/notes/:id/restore`, `GET /api/notices` 세 개이고 `restoreRoute`는 `POST /api/notes/:id/restore`입니다.
+`RULE_IDS`는 9단계와 같은 6개이며 복원 경로는 기존 `zone_notes` 규칙에 넣었습니다. 9단계 저장점 `46578ea`는 이후 GitHub에 푸시됐으며, 그 배포 반영 여부는 확인하지 않았습니다.
+
+안전 정책 사본: `backup/policy/`에 9단계(`46578ea`)의 `src/decider.mjs`, `allowedRoutes`, `sql/step5-revoke-direct-access.sql`을 SHA-256과 함께 보관합니다.
+사본 지문(manifest SHA-256)은 `cf54e7d58f8832360deb8eefcfe85fa226823048c8f506cc2403afbd76fd7d87`입니다. 사본이 없거나 해시·지문이 다르면 아래 명령이 모두 중단합니다.
+`npm run policy:drill`은 Git 제외 시험 사본(`artifacts/policy-drill/`)의 공지 규칙 한 줄을 바꿔 침공을 흉내 내고, `npm run policy:diff`는 사본과의 차이만 보여 줍니다.
+`npm run policy:restore`는 복원할 버전·바뀔 줄·보존 항목·확인 코드만 보여 주며, `-- --confirm <코드>`를 붙여야 시험 사본만 되돌리고 판정기 요청을 다시 확인합니다.
+감사 기록 `artifacts/policy-audit.jsonl`에는 덧붙이기만 합니다. 운영 정책은 이 명령들로 바꾸지 않으며, 운영 판정기는 사본보다 복원 경로 한 줄이 많습니다.
+
+복원 대상: 시험 계정 B의 가상 메모 `B 공개 시험 메모` 한 건. ID: **미기록**(아래 SQL 결과의 `id`를 받아 적습니다).
+고정 ID를 미리 공개하면 다른 계정이 같은 ID로 메모를 먼저 만들 수 있어(메모 추가는 클라이언트 ID 허용), 이미 B가 가진 메모를 골랐습니다.
+
+| 구분 | 값 |
+|---|---|
+| 판정기 서비스·경로 | 서비스 `notes`, route `POST /notes/:id/restore`, 규칙 `zone_notes` |
+| 실제 API | `POST /api/notes/:id/restore` → `api/notes.js` (`vercel.json` rewrite). `allowedRoutes`·`restoreRoute`에 기록 |
+| 비공개 사본 | Supabase 표 `public.aleph_defense_notes_backup`. `sql/step10-backup-b-note.sql`(Git 제외)로 만들며 아직 실행하지 않았습니다 |
+
+사본 표는 anon·authenticated 권한이 없고 서버 키는 SELECT만 가집니다. 메모 본문은 Git·README에 넣지 않습니다.
+복원 API는 로그인한 본인의 사본 한 건만 읽어 사본의 ID·소유자·내용 SHA-256을 먼저 대조하고, 그 ID 한 건만 추가하거나 되돌린 뒤 다시 읽어 셋을 재대조합니다.
+사본에 없거나 남의 사본이면 404, 사본 해시가 틀리면 409 `BACKUP_HASH_MISMATCH`, 같은 ID를 다른 계정 메모가 쓰면 덮어쓰지 않고 409입니다.
+다른 메모와 사본 표는 바꾸지 않으며, 감사 기록으로 서버 로그에 `aleph.restored resource=notes.own note=<ID> sha256=<해시>` 한 줄을 덧붙입니다.
+
+확인 순서(시험 계정 B만):
+1. Supabase SQL Editor에서 `sql/step10-backup-b-note.sql` 실행 → 결과의 `id`, `content_sha256`, `same_as_current=true` 확인.
+2. 배포 후 B 로그인 → 메모를 수정하거나 삭제해 사고를 흉내 냅니다.
+3. 개발자 도구 Console: `await (await fetch('/api/notes/<ID>/restore',{method:'POST'})).json()` →
+   200 `{id, ownerMatches:true, contentSha256}`이며 `id`·`contentSha256`이 1의 값과 같아야 합니다. 메모 목록에 원래 내용이 돌아옵니다.
+4. 거부 확인: 같은 요청의 `GET`은 405, 사본에 없는 다른 메모 ID는 404, 시크릿 창은 401입니다.
+
+로컬 시험 `node --test test/notes-restore.test.mjs`가 가짜 DB로 위 동작을 확인합니다. SQL 실행·배포·실제 B 확인은 아직 하지 않았습니다.
+
+### 복구 뒤 1~9단계 정상·금지 요청 다시 실행
+
+자료·정책을 되살린 뒤 아래 순서로 실행합니다. 결과 칸에는 실제로 실행한 것만 적고, 실행하지 않은 것은 **미실행**으로 둡니다.
+로컬 결과는 가상 요청·가짜 DB 연습이며 심판 판정이 아닙니다. 결과 시각은 KST입니다.
+
+**가. 자료와 정책이 돌아왔는지**
+
+| # | 확인 | 명령·위치 | 정상 / 다시 거부되어야 할 요청 | 결과 |
+|---|---|---|---|---|
+| 1 | 정책이 검증한 사본과 같음 | `npm run policy:diff` | 세 파일 모두 `같음` | 2026-11-11 17:57 세 파일 `같음` |
+| 2 | 침공 흉내 → 정책 복원 | `npm run policy:drill` → `npm run policy:restore` → 표시된 `--confirm` 명령 | 13줄 한 곳만 표시. 복원 뒤 등록 기기의 메모 한 건 읽기·A 공지 읽기 `allow` / 침공 때 열린 B 공지 쓰기, B 메모 전체 목록, 미등록 기기 `deny`, 복합 이상 `step_up` | 2026-11-11 17:47 7/7 통과 (`artifacts/policy-audit.jsonl`) |
+| 3 | B 메모 ID·소유자·내용 해시 | 위 확인 순서 1~3 (SQL 결과와 복원 응답 비교) | `id`·`contentSha256`이 SQL 값과 같고 `ownerMatches:true` / 같은 경로 `GET` 405, 사본 없는 ID 404 | 미실행 (SQL·배포 전) |
+
+정책 2는 9단계 사본 기준의 시험 정책입니다. 운영 판정기의 복원 경로 한 줄은 사본에 없습니다.
+DB 접근 정책은 SQL 사본의 해시만 대조했으며 실제 DB 권한 상태는 확인하지 않았습니다.
+
+**나. 로컬 정상·금지 요청 (배포 없이 실행)**
+
+| # | 단계 | 명령 | 정상 / 거부되어야 할 요청 | 결과 |
+|---|---|---|---|---|
+| 4 | 2~10 자료 API·로그인 | `node --test test/*.test.mjs` | 본인 메모 CRUD, 공지 읽기, B 사본 복원 / 무로그인 401, 타인 메모 404, 다른 출처 쿠키 쓰기 403, 공지 쓰기 405, 소유자 변경 400, 사본 해시 불일치 409 | 2026-11-11 17:57 36/36 통과 |
+| 5 | 6·7 판정기 | `npm run decider:test` | 등록 기기 `allow`, 재확인 뒤 `allow` / 미등록 기기 `deny`, 복합 이상 `step_up` | 2026-11-11 17:57 4/4 통과 |
+| 6 | 7 | `npm run fixture:7` | `정상 사건: allow` / `복합 이상 사건: step_up` | 2026-11-11 17:57 두 줄 그대로 출력 |
+| 7 | 9 탐지 | `npm run detect:test` | 30건·정확히 120건·분산·다른 사용자 `observe` / 121건·200건 회수 제안 | 2026-11-11 17:57 6/6 통과 |
+
+**다. 배포·실제 계정 (시험 계정 B, A는 읽기만)**
+
+| # | 단계 | 요청 | 정상 / 거부되어야 할 결과 | 결과 |
+|---|---|---|---|---|
+| 8 | 1·2 | 시크릿 창 `/`, `/aleph.json`, `/data.json` | `/` 200·nosniff, `/aleph.json` 200 / `/data.json` 404·메모 문장 0건 | 미실행 |
+| 9 | 3 | 시크릿 창 `/api/notes`, `/api/notices` | — / 둘 다 401 | 미실행 |
+| 10 | 4·5 | B 로그인 → 새 가상 메모 추가·수정·삭제, A 로그인 → 본인 목록 | 201·200·204, A 목록 200 / B가 A 메모 UUID로 GET·PUT·DELETE 404 | 미실행 |
+| 11 | 8 | B 로그인 Console `fetch('/api/notices')` | 200 공지만 / 같은 경로 `POST` 405, 없는 메모 UUID 404 | 미실행 |
+| 12 | 5 | 공개 키로 원본 REST 직접 요청 | — / 차단 | 미실행 (심판 확인 대상) |
+| 13 | 6·7·9 | 운영 엔진을 거친 미등록 기기·이상 접속·폭주 조회 | — / `deny`·`step_up`·회수 제안 | 미실행 (엔진 연결 없음) |
+| 14 | 1~10 | `npm run bundle`의 실제 HTTP 자기 점검 | `src/attack-check.mjs` 기록. 10단계는 로그인 없는 복원 `POST` 401을 실제로 보내고, B 복원·정책 복원은 미실행으로 기록 | 미실행 |
+
+이 저장점의 푸시·배포, 사본 SQL 실행, 실제 B 확인과 심판 판정은 아직 실행하지 않았습니다.
+
 ## 9단계 저장점: 도플갱어를 찾고 권한을 거둡니다
 
 저장점 이름: **9단계 저장점**. `step: 9`로 올렸습니다. 배포 주소, 로그인 발급자, `allowedRoutes` 두 개, 원본 HTTPS 경로는

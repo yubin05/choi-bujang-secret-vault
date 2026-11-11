@@ -1,5 +1,5 @@
 {
-  "step": 9,
+  "step": 10,
   "repoUrl": "https://github.com/yubin05/choi-bujang-secret-vault",
   "publicAppUrl": "https://choi-bujang-secret-vault-two-inky.vercel.app",
   "sampleMarker": "SAMPLE_NOTE_1",
@@ -9,7 +9,7 @@
     "audience": "authenticated",
     "jwksUrl": "https://sxyyvwzxgukjpfavqocu.supabase.co/auth/v1/.well-known/jwks.json"
   },
-  "allowedRoutes": ["GET /api/notes/:id", "GET /api/notices"],
+  "allowedRoutes": ["GET /api/notes/:id", "POST /api/notes/:id/restore", "GET /api/notices"],
   "originalApiUrl": "https://sxyyvwzxgukjpfavqocu.supabase.co/rest/v1/aleph_defense_notes",
-  "restoreRoute": null
+  "restoreRoute": "POST /api/notes/:id/restore"
 }

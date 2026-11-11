@@ -18,7 +18,7 @@ function validResponse(request, response, ruleIds) {
 }
 
 // Local practice only. The class engine and the server judge validate live requests separately.
-export async function checkDecider({ decide, ruleIds }) {
+export async function checkDecider({ decide, ruleIds, extraChecks = [] }) {
   if (typeof decide !== 'function' || !Array.isArray(ruleIds)
       || !ruleIds.includes('device_registered')) {
     throw new Error('6단계 device_registered 규칙을 먼저 구현하고 RULE_IDS에 적어 주세요.');
@@ -38,6 +38,7 @@ export async function checkDecider({ decide, ruleIds }) {
       decision: 'allow' },
     );
   }
+  checks.push(...extraChecks);
   const results = [];
   for (const item of checks) {
     const response = await decide(item.request);

@@ -1,0 +1,20 @@
+{
+  "schema": "aleph.policy-backup.v1",
+  "step": 9,
+  "sourceCommit": "46578eab553056d6c5e985f8e3d1e42af0e78f0e",
+  "createdAt": "2026-11-11T08:41:12.935Z",
+  "files": {
+    "decider.mjs": {
+      "source": "src/decider.mjs",
+      "sha256": "762e5339df5b0996acbfe4b5ac280126765f9d11af1105d8a50b0684eea902a5"
+    },
+    "allowedRoutes.json": {
+      "source": "aleph.config.json#allowedRoutes",
+      "sha256": "d6d47054625f10160010dd23ec1157d2689400ff5ac0287dcc29fecae400a226"
+    },
+    "step5-revoke-direct-access.sql": {
+      "source": "sql/step5-revoke-direct-access.sql",
+      "sha256": "af8e5124fa1d7a34eac71306cc0f73ceb43e23c45e0297c6ea2fec45c449ea85"
+    }
+  }
+}

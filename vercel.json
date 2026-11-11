@@ -4,6 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "public",
   "rewrites": [
+    { "source": "/api/notes/:id/restore", "destination": "/api/notes?id=:id&restore=1" },
     { "source": "/api/notes/:id", "destination": "/api/notes?id=:id" }
   ],
   "headers": [

@@ -70,5 +70,18 @@ test('강사 자료와 알 수 없는 서비스는 추가 확인 없이 거부�
 
 test('allowedRoutes에는 판정기가 허용하는 경로만 메서드와 함께 적습니다', async () => {
   const config = JSON.parse(await readFile(new URL('../aleph.config.json', import.meta.url)));
-  assert.deepEqual(config.allowedRoutes, ['GET /api/notes/:id', 'GET /api/notices']);
+  assert.deepEqual(config.allowedRoutes, ['GET /api/notes/:id', 'POST /api/notes/:id/restore', 'GET /api/notices']);
+  assert.equal(config.restoreRoute, 'POST /api/notes/:id/restore');
+});
+
+test('메모 사본 복원은 정확한 POST /notes/:id/restore 모양만 허용합니다', async () => {
+  const route = 'POST /notes/:id/restore';
+  assert.deepEqual(await ask(at('POST', '/notes/demo/restore', route)), allowed('zone_notes'));
+  for (const fields of [at('GET', '/notes/demo/restore', route), at('POST', '/notes/restore', route),
+    at('POST', '/notes//restore', route), at('POST', '/notes/demo/export', route),
+    at('POST', '/notes/demo/restore', 'POST /notes/:id/export'), at('PUT', '/notes/demo/restore', 'PUT /notes/:id/restore')]) {
+    assert.deepEqual(await ask(fields), denied('zone_notes'), JSON.stringify(fields));
+  }
+  assert.deepEqual(await ask({ ...at('POST', '/notes/demo/restore', route), deviceRegistered: false }),
+    { decision: 'deny', reasonCode: 'device_not_registered', ruleIds: ['device_registered'] });
 });

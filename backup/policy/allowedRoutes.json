@@ -1,0 +1,4 @@
+[
+  "GET /api/notes/:id",
+  "GET /api/notices"
+]

@@ -7,8 +7,8 @@ export const RULE_IDS = Object.freeze(['starter.deny', 'device_registered', 'ste
 // 자원 구역 표: 서비스마다 판정기가 허용하는 정확한 경로 모양(엔진 route 형식, 메서드 포함)만 적습니다.
 // 쿼리로 기능을 고르지 않고, :id와 같은 깊이에 기능 경로를 두지 않습니다. 메모 주인 비교는 자료 API가 합니다.
 const ZONES = new Map([
-  // 메모: 자료 ID 하나를 고르는 읽기만 허용합니다. ID 없는 전체 목록(GET /notes)은 거부합니다.
-  ['notes', { ruleId: 'zone_notes', routes: ['GET /notes/:id'] }],
+  // 메모: ID 하나를 고르는 읽기와 그 한 건의 사본 복원만 허용합니다. ID 없는 전체 목록(GET /notes)은 거부합니다.
+  ['notes', { ruleId: 'zone_notes', routes: ['GET /notes/:id', 'POST /notes/:id/restore'] }],
   // 반 공지: 읽기만 허용하고 쓰기는 누구에게나 거부합니다. 강사의 공지 수정은 서버의 관리 경로에서 처리합니다.
   ['notices', { ruleId: 'zone_notices', routes: ['GET /notices'] }],
   // 강사 자료: 판정기에서 모두 거부합니다.

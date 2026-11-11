@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -29,9 +29,13 @@ export async function runAttackChecks(config) {
     if (config.step >= 3) {
       const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
       if (config.step >= 8) probes.push(['/api/notices', false, 'anonymous_notice_read']);
-      for (const [path, invalid, attackId] of probes) {
+      // 10단계: 로그인 없는 복원 요청. 가상 UUID라 DB 조회 전에 401이어야 합니다.
+      if (config.step >= 10) {
+        probes.push(['/api/notes/00000000-0000-4000-8000-000000000000/restore', false, 'anonymous_note_restore', 'POST']);
+      }
+      for (const [path, invalid, attackId, method = 'GET'] of probes) {
         const result = await fetch(new URL(path, app), {
-          redirect: 'error', signal: AbortSignal.timeout(10000),
+          method, redirect: 'error', signal: AbortSignal.timeout(10000),
           ...(invalid ? { headers: { Authorization: 'Bearer invalid' } } : {}),
         });
         let rejected = false;
@@ -64,6 +68,14 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'burst_read_revocation',
         expected: '같은 가명 사용자의 10분 안 GET 121건 이상은 propose_revocation·burst_read, 정상 조회는 observe로 기기 유지',
         observed: '미실행: 운영 반 엔진의 사건 전달·접속 회수 경로가 연결되지 않음(로컬 npm run detect:test만 통과)' });
+    }
+    if (config.step >= 10) {
+      attempts.push({ attackId: 'backup_note_restore',
+        expected: '시험 계정 B의 사본 메모 한 건만 ID·소유자·내용 해시를 대조해 되살리고, 남의 사본·사본에 없는 ID는 404, 사본 해시 불일치는 409',
+        observed: '미실행: 비공개 사본 SQL·배포·실제 B 로그인 요청을 아직 하지 않음(로컬 모의 시험만 통과)' });
+      attempts.push({ attackId: 'policy_restore_recheck',
+        expected: '검증한 정책 사본으로 되돌린 뒤 정상 요청은 allow, 침공 때 열린 B 공지 쓰기는 다시 deny',
+        observed: '미실행: 운영 정책에는 적용하지 않음(로컬 시험 정책 npm run policy:restore 7건만 통과)' });
     }
     return attempts;
   }
