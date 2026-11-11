@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -47,6 +47,11 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'unregistered_device_read',
         expected: '미등록 기기 요청은 deny·device_not_registered로 거부',
         observed: '미실행: 미등록 기기 접속 시험은 심판이 수행' });
+    }
+    if (config.step >= 7) {
+      attempts.push({ attackId: 'unusual_access_before_relogin',
+        expected: '복합 이상 접속은 다시 로그인 전 step_up·step_up_required로 자료 없이 보류, 새 로그인 뒤 새 요청만 허용',
+        observed: '미실행: 엔진의 같은 주체 다시 로그인 시각 확인 계약이 준비되지 않아 실제 자료 차단을 시험하지 않음' });
     }
     return attempts;
   }
