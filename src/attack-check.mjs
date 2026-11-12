@@ -17,19 +17,21 @@ export async function runAttackChecks(config) {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
   if (config.step >= 2) {
-    let empty = response.status === 404 || response.status === 410;
-    try {
-      const data = await response.json();
-      empty ||= response.ok && Array.isArray(data.notes) && data.notes.length === 0;
-    } catch {
-      // HTML이나 오류 응답을 성공으로 기록하지 않습니다.
-    }
+    // observed에는 실제로 받은 HTTP 상태·오류 코드와 실제로 보낸 요청만 적습니다. 해석 문구는 넣지 않습니다.
+    const seen = async (result, request) => {
+      let code = '';
+      try {
+        const body = await result.json();
+        if (/^[A-Z_]{1,40}$/u.test(body?.error ?? '')) code = ` ${body.error}`;
+        if (Array.isArray(body?.notes)) code += ` notes ${body.notes.length}건`;
+      } catch { /* JSON이 아닌 응답은 상태만 적습니다. */ }
+      return `HTTP ${result.status}${code} · ${request}`;
+    };
     const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
-      observed: `HTTP ${response.status}; 공개 메모 제거 ${empty ? '확인' : '미확인'}` }];
+      observed: await seen(response, 'GET /data.json 토큰 없음') }];
     if (config.step >= 3) {
       const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
       if (config.step >= 8) probes.push(['/api/notices', false, 'anonymous_notice_read']);
-      // 10단계: 로그인 없는 복원 요청. 가상 UUID라 DB 조회 전에 401이어야 합니다.
       // 10단계 비로그인 복원은 POST라 보내지 않습니다. 심판 격리 실행은 공개 HTTPS GET·HEAD만 허용합니다.
       if (config.step >= 10) {
         attempts.push({ attackId: 'anonymous_note_restore',
@@ -42,15 +44,9 @@ export async function runAttackChecks(config) {
           redirect: 'error', signal: AbortSignal.timeout(10000),
           ...(invalid ? { headers: { Authorization: 'Bearer invalid' } } : {}),
         });
-        let rejected = false;
-        try {
-          const body = await result.json();
-          rejected = result.status === 401 && body.error === 'UNAUTHORIZED'
-            && Object.keys(body).length === 1;
-        } catch { /* 자료 없는 JSON 거부 응답만 성공으로 기록합니다. */ }
         attempts.push({ attackId,
           expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401',
-          observed: `HTTP ${result.status}; 자료 없는 거부 ${rejected ? '확인' : '미확인'}` });
+          observed: await seen(result, `GET ${path} ${invalid ? 'Authorization: Bearer invalid' : '토큰 없음'}`) });
       }
     }
     if (config.step >= 6) {

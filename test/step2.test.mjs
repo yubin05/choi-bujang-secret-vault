@@ -47,15 +47,15 @@ test('2단계 빌드는 원본과 이전 정적 파일의 메모를 공개하지
   }
 });
 
-test('2단계 자기 점검은 404와 빈 목록을 통과시키며 오류 응답을 거부한다', async () => {
+test('2단계 자기 점검은 data.json의 실제 상태·공개 메모 수와 보낸 요청만 기록한다', async () => {
   const originalFetch = globalThis.fetch;
   try {
     const config = { step: 2, sampleMarker: 'SAMPLE_NOTE_1', publicAppUrl: 'https://example.vercel.app' };
-    for (const [body, status, passes] of [['{"notes":[]}', 200, true], ['{"notes":[{}]}', 200, false],
-      ['<html/>', 200, false], ['<html/>', 404, true], ['error', 500, false]]) {
+    for (const [body, status, seen] of [['{"notes":[]}', 200, 'HTTP 200 notes 0건'], ['{"notes":[{}]}', 200, 'HTTP 200 notes 1건'],
+      ['<html/>', 200, 'HTTP 200'], ['<html/>', 404, 'HTTP 404'], ['error', 500, 'HTTP 500']]) {
       globalThis.fetch = async () => new Response(body, { status });
       const [result] = await runAttackChecks(config);
-      assert.equal(result.observed.endsWith('제거 확인'), passes);
+      assert.equal(result.observed, `${seen} · GET /data.json 토큰 없음`);
     }
   } finally {
     globalThis.fetch = originalFetch;
