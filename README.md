@@ -6,13 +6,34 @@
 `allowedRoutes`는 판정기가 허용하는 `GET /api/notes/:id`, `POST /api/notes/:id/restore`, `GET /api/notices` 세 개이고 `restoreRoute`는 `POST /api/notes/:id/restore`입니다.
 `RULE_IDS`는 9단계와 같은 6개이며 복원 경로는 기존 `zone_notes` 규칙에 넣었습니다. 9단계 저장점 `46578ea`는 이후 GitHub에 푸시됐으며, 그 배포 반영 여부는 확인하지 않았습니다.
 
-안전 정책 사본: `backup/policy/`에 9단계(`46578ea`)의 `src/decider.mjs`, `allowedRoutes`, `sql/step5-revoke-direct-access.sql`을 SHA-256과 함께 보관합니다.
-사본 지문(manifest SHA-256)은 `cf54e7d58f8832360deb8eefcfe85fa226823048c8f506cc2403afbd76fd7d87`입니다. 사본이 없거나 해시·지문이 다르면 아래 명령이 모두 중단합니다.
-`npm run policy:drill`은 Git 제외 시험 사본(`artifacts/policy-drill/`)의 공지 규칙 한 줄을 바꿔 침공을 흉내 내고, `npm run policy:diff`는 사본과의 차이만 보여 줍니다.
-`npm run policy:restore`는 복원할 버전·바뀔 줄·보존 항목·확인 코드만 보여 주며, `-- --confirm <코드>`를 붙여야 시험 사본만 되돌리고 판정기 요청을 다시 확인합니다.
-감사 기록 `artifacts/policy-audit.jsonl`에는 덧붙이기만 합니다. 운영 정책은 이 명령들로 바꾸지 않으며, 운영 판정기는 사본보다 복원 경로 한 줄이 많습니다.
+복원 절차는 아래 두 가지이며 범위가 서로 다르고 서로 영향을 주지 않습니다.
+절차 1은 메모를 읽거나 쓰지 않고, 절차 2는 정책·규칙 파일과 DB 권한을 바꾸지 않습니다.
+두 절차 모두 감사 기록을 덧붙이기만 하며 지우거나 고치지 않고, 대상 밖의 규칙과 자료는 그대로 둡니다.
+운영 판정기 메모 구역의 `POST /notes/:id/restore` 한 줄은 이 저장점 커밋에서 넣은 것이며, 두 절차가 실행 중에 바꾸는 규칙이 아닙니다.
 
-복원 대상: 시험 계정 B의 가상 메모 `B 공개 시험 메모` 한 건. ID: **미기록**(아래 SQL 결과의 `id`를 받아 적습니다).
+### 절차 1. 정책 시험 사본 복원 (`npm run policy:restore`)
+
+| 항목 | 내용 |
+|---|---|
+| 되돌리는 것 | 시험 정책 `artifacts/policy-drill/`(Git 제외)에서 검증한 사본과 다른 줄만. 이번 침공 흉내에서는 `decider.mjs` 13줄의 공지(`notices`) 규칙 한 줄 |
+| 바꾸지 않는 것 | 메모(DB·API), 운영 정책(`src/decider.mjs`, `aleph.config.json`, `sql/`), 시험 정책의 다른 규칙(메모·강사 자료 구역, 기기·재확인 규칙), 검증한 사본 `backup/policy/` |
+| 감사 기록 | `artifacts/policy-audit.jsonl`(Git 제외 로컬 파일)에 침공 흉내·복원마다 한 줄씩 덧붙입니다. 시험 사본을 다시 만들어도 지우지 않습니다 |
+| 중단 | 사본이 없거나 해시·사본 지문이 다를 때, 미리보기 뒤 사본·시험 정책이 바뀌어 확인 코드가 다를 때 |
+
+검증한 사본: `backup/policy/`에 9단계(`46578ea`)의 `src/decider.mjs`, `allowedRoutes`, `sql/step5-revoke-direct-access.sql`을 SHA-256과 함께 보관합니다.
+사본 지문(manifest SHA-256)은 `cf54e7d58f8832360deb8eefcfe85fa226823048c8f506cc2403afbd76fd7d87`입니다.
+`npm run policy:drill`은 시험 정책의 공지 규칙 한 줄을 바꿔 침공을 흉내 내고, `npm run policy:diff`는 사본과의 차이만 보여 줍니다.
+`npm run policy:restore`는 복원할 버전·바뀔 줄·보존 항목·확인 코드만 보여 주며, `-- --confirm <코드>`를 붙여야 시험 정책만 되돌리고 판정기 요청을 다시 확인합니다.
+
+### 절차 2. B 메모 한 건 복원 (`POST /api/notes/:id/restore`)
+
+| 항목 | 내용 |
+|---|---|
+| 되돌리는 것 | 지정한 시험 계정 B의 가상 메모 `B 공개 시험 메모` 한 건. ID: **미기록**(아래 SQL 결과의 `id`를 받아 적습니다) |
+| 바꾸지 않는 것 | 정책·규칙(판정기, `allowedRoutes`, DB 권한), 다른 메모(A 메모, B의 다른 메모, 같은 ID를 쓰는 다른 계정 메모), 비공개 사본 표 |
+| 감사 기록 | 서버 로그에 `aleph.restored resource=notes.own note=<ID> sha256=<해시>` 한 줄을 덧붙입니다. 기존 로그와 거부 기록(`aleph.denied`)은 지우지 않습니다 |
+| 거부 | 사본에 없거나 남의 사본이면 404, 사본 해시가 틀리면 409 `BACKUP_HASH_MISMATCH`, 같은 ID를 다른 계정 메모가 쓰면 덮어쓰지 않고 409 |
+
 고정 ID를 미리 공개하면 다른 계정이 같은 ID로 메모를 먼저 만들 수 있어(메모 추가는 클라이언트 ID 허용), 이미 B가 가진 메모를 골랐습니다.
 
 | 구분 | 값 |
@@ -23,8 +44,6 @@
 
 사본 표는 anon·authenticated 권한이 없고 서버 키는 SELECT만 가집니다. 메모 본문은 Git·README에 넣지 않습니다.
 복원 API는 로그인한 본인의 사본 한 건만 읽어 사본의 ID·소유자·내용 SHA-256을 먼저 대조하고, 그 ID 한 건만 추가하거나 되돌린 뒤 다시 읽어 셋을 재대조합니다.
-사본에 없거나 남의 사본이면 404, 사본 해시가 틀리면 409 `BACKUP_HASH_MISMATCH`, 같은 ID를 다른 계정 메모가 쓰면 덮어쓰지 않고 409입니다.
-다른 메모와 사본 표는 바꾸지 않으며, 감사 기록으로 서버 로그에 `aleph.restored resource=notes.own note=<ID> sha256=<해시>` 한 줄을 덧붙입니다.
 
 확인 순서(시험 계정 B만):
 1. Supabase SQL Editor에서 `sql/step10-backup-b-note.sql` 실행 → 결과의 `id`, `content_sha256`, `same_as_current=true` 확인.
