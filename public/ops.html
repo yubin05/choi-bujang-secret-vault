@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BYTE BACK | 탈환 작전실</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
+    main { max-width: 760px; margin: 0 auto; padding: 44px 22px 64px; }
+    .eyebrow { color: #8ad8df; font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+    h1 { margin: 16px 0; font-size: clamp(30px, 7vw, 48px); line-height: 1.2; }
+    p { font-size: 17px; line-height: 1.7; color: #bfd0e5; }
+    a { color: #8ad8df; }
+    ul { list-style: none; display: grid; gap: 12px; padding: 0; }
+    li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
+    li[data-state="not_run"] { border-style: dashed; }
+    li[data-state="unavailable"] { border-color: #d07384; }
+    strong { display: block; font-size: 18px; margin-bottom: 5px; }
+    span { display: block; color: #bfd0e5; }
+    code { display: block; margin-top: 6px; color: #8ad8df; overflow-wrap: anywhere; }
+    button { padding: 10px 12px; border: 1px solid #51667c; border-radius: 8px; font: inherit; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .6; }
+    table { border-collapse: collapse; font-size: 14px; min-width: 900px; }
+    th, td { border: 1px solid #51667c; padding: 6px 8px; text-align: left; vertical-align: top; }
+  </style>
+  <script src="/ops.js" defer></script>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">BYTE BACK · 12단계</div>
+    <h1>탈환 작전실</h1>
+    <p>서버가 이번 요청에서 실제로 읽은 값만 "API 응답 확인"으로 표시합니다. 연결하지 않은 항목은 "미실행", 읽지 못한 항목은 "확인 못 함"입니다.
+      메모 본문은 받지도 표시하지도 않으며, 이 화면의 문구는 통과 근거가 아닙니다.</p>
+    <p><a href="/">자료실로 돌아가기</a> · <button id="ops-reload" type="button">다시 읽기</button></p>
+    <p id="ops-status" role="status" aria-live="polite">서버 기록을 읽는 중…</p>
+    <code id="ops-record"></code>
+    <div id="ops-board"></div>
+    <section aria-labelledby="matrix-title">
+      <h2 id="matrix-title">1~11단계 실측 표</h2>
+      <p>버튼을 누르면 정상·금지 요청을 실제로 보내고 응답 상태만 적습니다. 실측용 가상 메모 1건을 만들었다가 마지막에 지웁니다.
+        보내지 않은 요청은 미실행이며, "기대와 일치"는 심판 판정이 아닙니다. 서버 로그는 확인 시각으로 찾으세요.</p>
+      <button id="matrix-run" type="button">실측 시작</button>
+      <p id="matrix-status" role="status" aria-live="polite"></p>
+      <div style="overflow-x: auto">
+        <table>
+          <thead><tr><th>단계</th><th>구분</th><th>요청</th><th>기대 결과</th><th>실제 API 결과</th><th>대조</th><th>Vercel 응답 ID</th><th>확인 시각</th></tr></thead>
+          <tbody id="matrix-body"></tbody>
+        </table>
+      </div>
+      <pre id="matrix-text" style="white-space: pre-wrap; overflow-wrap: anywhere"></pre>
+    </section>
+  </main>
+</body>
+</html>

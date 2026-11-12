@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { authenticateDataRequest, denied, logDenied } from '../src/auth-session.mjs';
 import { RESOURCE_IDS } from '../src/resources.mjs';
+import { opsReport } from '../src/ops.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const sha256 = text => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -65,7 +66,9 @@ export default async function handler(request, response) {
   const id = request.query?.id;
   const single = id !== undefined;
   const restore = single && request.query?.restore === '1';
-  const allowed = restore ? ['POST'] : single ? ['GET', 'PUT', 'DELETE'] : ['GET', 'POST'];
+  // GET /api/ops(vercel.json 재작성): 탈환 작전실 요약. 메모 본문 없이 상태와 수치만 돌려줍니다.
+  const ops = !single && request.query?.ops === '1';
+  const allowed = ops ? ['GET'] : restore ? ['POST'] : single ? ['GET', 'PUT', 'DELETE'] : ['GET', 'POST'];
   if (!allowed.includes(request.method)) {
     response.setHeader('Allow', allowed.join(', '));
     return denied(response, RESOURCE_IDS.notes, 405, 'METHOD_NOT_ALLOWED');
@@ -73,6 +76,7 @@ export default async function handler(request, response) {
 
   const auth = await authenticateDataRequest(request);
   if (auth.error) return denied(response, RESOURCE_IDS.notes, auth.status, auth.error);
+  if (ops) return response.status(200).json(await opsReport(auth));
   const { identity, base, secret } = auth;
 
   if (single && (typeof id !== 'string' || !UUID.test(id))) {

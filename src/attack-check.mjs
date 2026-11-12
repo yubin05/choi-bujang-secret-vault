@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -33,6 +33,8 @@ export async function runAttackChecks(config) {
       if (config.step >= 10) {
         probes.push(['/api/notes/00000000-0000-4000-8000-000000000000/restore', false, 'anonymous_note_restore', 'POST']);
       }
+      // 12단계: 로그인 없는 작전실 요약 요청. 수치 없이 401이어야 합니다.
+      if (config.step >= 12) probes.push(['/api/ops', false, 'anonymous_ops_read']);
       for (const [path, invalid, attackId, method = 'GET'] of probes) {
         const result = await fetch(new URL(path, app), {
           method, redirect: 'error', signal: AbortSignal.timeout(10000),
@@ -96,6 +98,17 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'approved_device_vault',
         expected: 'SQL Editor에서 확인 코드로 승인한 기기에서만 기존 자료실(본인 메모 추가·수정·삭제)이 열림',
         observed: '미실행: 실제 승인과 승인된 기기의 로그인 확인을 아직 하지 않음(로컬 모의 시험만 통과)' });
+    }
+    if (config.step >= 12) {
+      attempts.push({ attackId: 'ops_record_match',
+        expected: '승인 기기의 작전실 화면 줄이 Vercel Runtime Logs의 같은 id aleph.ops 줄과 글자 그대로 같고 메모 본문이 없음',
+        observed: '미실행: 이 저장점의 배포·승인 기기 로그인·Runtime Logs 대조를 아직 하지 않음(로컬 모의 시험만 통과)' });
+      attempts.push({ attackId: 'stage_matrix_live',
+        expected: '작전실 실측 표에서 1~11단계 정상 9건 허용·금지 10건 거부가 실제 응답으로 남고 보내지 않은 8건은 미실행',
+        observed: '미실행: 배포된 작전실에서 실측 시작을 아직 누르지 않음(로컬 모의 시험만 통과)' });
+      attempts.push({ attackId: 'final_assault_41',
+        expected: '총공세 41종 공격은 운영 엔진·심판이 실행해 방어 여부를 판정',
+        observed: '미실행: 41종 시험은 심판이 수행하며 학생 자기 점검에서 실행하지 않음' });
     }
     return attempts;
   }

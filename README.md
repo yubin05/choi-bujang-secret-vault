@@ -1,5 +1,77 @@
 # BYTE BACK 방어전 시작 틀 R5
 
+## 12단계 저장점: 탈환 작전실을 완성합니다
+
+저장점 이름: **12단계 저장점**. `step: 12`로 올렸습니다. 배포 주소, 로그인 발급자, 원본 HTTPS 경로, `judgeIssuer`, `restoreRoute`는 바뀐 구현이 없어 11단계 값 그대로 대조했습니다.
+`allowedRoutes`는 판정기가 허용하는 자료 경로 3개 그대로입니다. 새 `GET /api/ops`는 판정기 구역에 넣지 않은 학생 작전실 경로라 넣지 않았고, 운영 엔진을 거치면 기본 거부됩니다.
+판정기(`src/decider.mjs`)와 `RULE_IDS` 6개는 바꾸지 않았습니다. 판정기는 `docs/DECIDER_REQUEST.md`의 요청 이름만 읽고 `role`·`identity`·`device`·`geo`는 읽지 않습니다.
+11단계 저장점 `3586b3d`는 이후 GitHub에 푸시됐으며, 그 배포 반영 여부는 확인하지 않았습니다.
+
+**탈환 작전실 `/ops.html`(자료실의 "탈환 작전실 열기"):**
+| 기능 | 동작 |
+|---|---|
+| 요약 | `GET /api/ops`(`vercel.json`으로 기존 메모 함수에 연결, 새 함수 없음)가 판정기 규칙·탐지 사건·회수 상태·복구 버전을 `API 응답 확인`·`미실행`·`확인 못 함`으로 돌려줍니다. 메모 본문·사용자 ID·기기 해시·확인 코드는 넣지 않습니다 |
+| 서버 기록 대조 | 서버는 같은 내용을 `aleph.ops id=…` 한 줄로 남기고, 화면은 응답으로 같은 형식의 줄을 만듭니다. 두 줄이 글자 그대로 같아야 합니다 |
+| 1~11단계 실측 표 | **실측 시작**을 누를 때만 정상 9건·금지 10건을 실제로 보내고(실측용 가상 메모 1건을 만들었다가 지움) HTTP 상태·오류 코드·Vercel 응답 ID·확인 시각만 적습니다. 엔진 경로 등 보낼 수 없는 8건은 미실행입니다 |
+| 판정 표시 | 대조 값은 기대와 일치·기대와 다름·측정 실패·미실행뿐이며 심판 판정이 아닙니다. 운영 41종 시험은 표에 없고 미실행입니다 |
+
+다시 실행하는 방법: 아래 「설치·실행·중지·복구 안내」의 재현 순서를 따릅니다.
+거부되어야 할 결과: 로그인 없는 `/api/ops` 401, 승인 전 기기 403, `POST /api/ops` 405, 형식이 틀린 요약은 수치 없이 안내만 표시합니다.
+
+2026-11-12 로컬 실행: `node --test test/*.test.mjs` 43개, `npm run decider:test` 4개, `npm run detect:test`, `npm run build -- --local`이 통과했습니다.
+`package.json`·`package-lock.json`은 바꾸지 않았고, 커밋 전 HEAD(`3586b3d`)를 새로 복제한 저장소의 `npm install`도 오류 없이 끝났습니다. 가상 요청·가짜 DB 연습이며 심판 판정이 아닙니다.
+`npm run bundle`의 자기 점검은 로그인 없는 `/api/ops` 요청만 실제로 보내고, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
+이 저장점의 푸시·배포, 배포된 작전실의 실측과 Runtime Logs 대조, `step10`·`step11` SQL 실행, 심판 판정은 아직 실행하지 않았습니다.
+
+## 설치·실행·중지·복구 안내
+
+**기준:** 검사한 커밋 `3586b3d`(11단계 저장점)입니다. 12단계 이어받기 때 README 단계 기록과 대조했습니다.
+그 위의 12단계 탈환 작전실 변경(`src/ops.mjs`, `public/ops.html`·`ops.js`, `api/notes.js` 연결, `vercel.json`의 `/api/ops`, `test/ops-room.test.mjs`)은 12단계 저장점 커밋에 들어 있습니다.
+
+### 출처 구분
+
+| 구분 | 내용 | 출처 |
+|---|---|---|
+| 제공 엔진 | **ALEPH SDP 엔진**(반 엔진·운영 엔진). 신원·기기·경로를 먼저 확인한 요청만 `decide(request)`에 넘기고, 사건 전달·회수 집행·심판 공격을 맡습니다 | 운영 측 제공. 판정 계약 원본은 `student-kit/sdp-core/decision-contract.mjs`의 `aleph.decision.v1`이며 이 저장소에는 없습니다(요약: `docs/DECIDER_REQUEST.md`). 심판 접수 서버는 운영 측이 채운 `aleph.config.json`의 `judgeIssuer`입니다 |
+| 제공 시작 틀 | 첫 커밋 `3ad93c8`의 `docs/`, `package/`, `xdr/`, 로그인 검증 도우미 `src/verify-login.mjs`, `scripts/bundle.mjs`·`decider-test.mjs`·`detect-test.mjs`·`fixture-7.mjs`·`xdr-run.mjs`, 501 뼈대 `api/ai.js`·`api/threat-intel.js` | `ChoiTimo/aleph-defense-starter`(`package/baseline-functions.json`) |
+| 학생 몫 | 판정기 규칙 `src/decider.mjs`(시작 틀의 기본 거부 위에 규칙 5개), 탐지 규칙 `src/detect.mjs`, 접속 앱(`public/`, `api/auth/*`, `src/auth-session.mjs`), 자료실 API(`api/notes.js`, `api/notices.js`), 정책 백업 `scripts/policy-backup.mjs`·`backup/policy/`, 작전실 `src/ops.mjs`·`public/ops.*`, 자기 점검 `src/attack-check.mjs`, `sql/`(Git 제외), 테스트 | 이 저장소의 커밋. 시작 틀 파일 중 `src/decider.mjs`·`src/detect.mjs`·`src/attack-check.mjs`·`public/index.html`·`vercel.json`·`scripts/build-public.mjs`·`scripts/deployment-identity.mjs`는 학생이 고쳤습니다 |
+| 외부 서비스 | Supabase(로그인·DB), Vercel(배포), GitHub(저장소) | 각 서비스. 계정과 값은 저장소에 없습니다 |
+
+### 비밀값을 넣지 않는 곳
+
+- 환경변수는 이름만 적습니다: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`(서버 전용), `SUPABASE_PUBLISHABLE_KEY`. 값은 Vercel 프로젝트 Settings → Environment Variables 입력란에만 넣고 저장소·README·로그·제출 묶음에 넣지 않습니다. `.env`, `.env.*`는 Git 제외입니다.
+- `sql/`은 가상 메모 본문과 시험 계정 이메일을 담아 Git 제외입니다. 저장소에는 정책 사본 `backup/policy/step5-revoke-direct-access.sql`만 있습니다.
+- `npm run bundle`의 `artifacts/submission.json`에는 커밋·저장소 주소·바뀐 파일 이름·규칙 이름·자기 점검 결과·설정 주소만 들어가고 파일 내용은 들어가지 않습니다. 비밀키·토큰·이메일 모양이 보이면 묶음을 만들지 않습니다. `bundle-notes.json`과 `artifacts/`는 커밋하지 않습니다.
+
+### 재현 순서
+
+1. **준비:** Node 22 이상. `git clone https://github.com/yubin05/choi-bujang-secret-vault` → `cd choi-bujang-secret-vault` → `npm install`.
+2. **로컬 점검(DB·배포 불필요):** `node --test test/*.test.mjs`(12단계 저장점 43개, `3586b3d`만이면 37개) → `npm run decider:test` → `npm run fixture:7` → `npm run detect:test` → `npm run policy:diff` → `npm run build -- --local`.
+   모두 가상 요청·사건 연습이며 심판 판정이 아닙니다. 2026-11-12 이 PC에서 모두 통과·정상 종료했습니다.
+3. **DB(Supabase SQL Editor → New query, postgres 역할):** `sql/`의 파일을 이 순서로 한 번씩 실행합니다.
+   `step2-import-notes` → `step4-assign-note-owners` → `step5-revoke-direct-access` → `step10-backup-b-note` → `step11-device-approvals`.
+   각 파일의 확인 결과는 해당 단계 절의 기준과 대조합니다. 새로 복제한 저장소에는 `sql/`이 없으므로 원래 PC의 파일을 Git 밖으로 옮겨 씁니다.
+4. **배포(Vercel):** 새 프로젝트에 이 GitHub 저장소를 연결합니다. 빌드 명령과 공개 폴더는 `vercel.json`(`npm run build`, `public`)을 따릅니다.
+   위 환경변수 3개를 넣고, 환경변수를 바꾸면 새 배포부터 적용되므로 다시 배포합니다.
+   배포 주소가 `aleph.config.json`의 `publicAppUrl`과 다르면 로그인·쓰기 요청이 403 `ORIGIN_NOT_ALLOWED`이므로 새 주소로 바꿔 커밋·배포합니다. `judgeIssuer`는 바꾸지 않습니다.
+5. **접속 앱:** 배포 주소에서 B로 로그인 → **이 기기 승인 요청** → 화면의 확인 코드를 `sql/step11-device-approvals.sql` 끝의 승인 UPDATE에 넣어 실행(결과 1행, `owner_id`가 내 계정인지 확인) → **승인 상태 확인** → 자료실이 열립니다. 앱 설치는 선택이며 승인 근거가 아닙니다.
+6. **작전실(12단계 커밋 후):** **탈환 작전실 열기** → 요약의 `aleph.ops id=…` 줄을 Vercel Runtime Logs의 같은 id 줄과 대조 → **실측 시작** → 1~11단계 표를 저장점 기록에 붙입니다.
+7. **제출 점검:** 변경을 모두 커밋해 작업 트리가 깨끗한 상태에서 `npm run bundle`. 배포 주소로 실제 보낸 요청의 결과만 기록합니다.
+8. **심판 판정:** 운영 엔진이 실행합니다. 학생이 실행하거나 통과로 표시하는 단계가 아닙니다.
+
+### 구성 요소별 설치·실행·중지·복구
+
+| 구성 요소 | 설치 | 실행 | 중지 | 복구 |
+|---|---|---|---|---|
+| 학생 판정기 `src/decider.mjs` | 따로 없음. 저장소에 포함되고 운영 엔진이 `decide(request)`를 부릅니다. 엔진이 코드를 가져가는 방식은 운영 측 소관이며 확인하지 않았습니다 | 로컬 연습 `npm run decider:test`, `npm run fixture:7` | 엔진의 판정 중지는 운영 측 몫입니다. 로컬 명령은 끝나면 스스로 종료합니다(도중에 멈출 때 Ctrl+C) | 시험 정책: `npm run policy:diff` → `npm run policy:restore`(미리보기·확인 코드) → `npm run policy:restore -- --confirm <코드>`. 운영 파일: `git restore --source=<정상 커밋> -- src/decider.mjs` → 테스트 → 커밋·배포 |
+| 탐지 규칙 `src/detect.mjs`(`burst_read`) | 따로 없음 | `npm run detect:test`(가상 사건) | 운영 반 엔진과 연결되지 않아 중지할 운영 경로가 없습니다 | `git restore --source=<정상 커밋> -- src/detect.mjs` → 테스트 → 커밋 |
+| 접속 앱(설치형 웹앱·기기 승인) | 재현 순서 3의 `step11` SQL, 4의 배포, 브라우저의 앱 설치(선택) | 재현 순서 5 | 기기 승인 취소: SQL Editor에서 `SELECT code, requested_at, approved_at FROM public.aleph_defense_devices WHERE owner_id = '<내 계정 ID>';`로 코드를 찾고 `DELETE FROM public.aleph_defense_devices WHERE code = '<코드>' RETURNING owner_id, code;` → 그 기기의 자료 요청은 403. 내 계정 ID 확인법은 SQL 파일 끝 주석에 있습니다. 앱 제거만으로는 승인이 취소되지 않습니다 | 같은 기기에서 다시 승인 요청 → 새 확인 코드로 승인 |
+| 자료실(Vercel·Supabase) | 재현 순서 3·4 | 배포 주소 | Vercel 프로젝트 Settings → General → **Pause Project**. 방문자는 503 `DEPLOYMENT_PAUSED`를 받습니다. 재개는 같은 곳의 **Resume Project**이며 재배포가 필요 없습니다 | 배포: 프로젝트 개요의 Production Deployment → **Instant Rollback**(Hobby는 바로 이전 배포만). 되돌린 뒤에는 새 push가 운영 주소에 자동 연결되지 않으므로 **Manage**에서 배포를 다시 지정합니다. 메모 한 건: 아래 10단계 절차 2. 정책 시험 사본: 10단계 절차 1 |
+| 탈환 작전실 `/ops.html` | 12단계 커밋·배포 | 재현 순서 6 | 페이지를 닫으면 끝납니다(저장하는 상태 없음). 실측은 버튼을 누를 때만 요청을 보냅니다 | `git restore` 뒤 테스트·커밋·배포 |
+
+Vercel 기능 출처: [Pause Project](https://vercel.com/docs/projects/managing-projects), [Instant Rollback](https://vercel.com/docs/instant-rollback), [환경변수 적용 시점](https://vercel.com/docs/environment-variables).
+확인하지 않은 것: 새 Vercel 프로젝트·새 Supabase 프로젝트에서 이 순서 전체를 재현하지 않았고, Pause Project·Instant Rollback·기기 승인 취소는 실행하지 않았습니다. `step10`·`step11` SQL은 아직 DB에 실행하지 않았습니다.
+
 ## 11단계 저장점: 나만의 접속 앱을 완성합니다
 
 저장점 이름: **11단계 저장점**. `step: 11`로 올렸습니다. 배포 주소, 로그인 발급자, 원본 HTTPS 경로, `judgeIssuer`는 바뀐 구현이 없어 10단계 값 그대로 대조했습니다.

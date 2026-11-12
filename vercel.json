@@ -6,7 +6,8 @@
   "rewrites": [
     { "source": "/api/notes/:id/restore", "destination": "/api/notes?id=:id&restore=1" },
     { "source": "/api/notes/:id", "destination": "/api/notes?id=:id" },
-    { "source": "/api/auth/device", "destination": "/api/auth/session?device=request" }
+    { "source": "/api/auth/device", "destination": "/api/auth/session?device=request" },
+    { "source": "/api/ops", "destination": "/api/notes?ops=1" }
   ],
   "headers": [
     {
