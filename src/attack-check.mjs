@@ -30,14 +30,16 @@ export async function runAttackChecks(config) {
       const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
       if (config.step >= 8) probes.push(['/api/notices', false, 'anonymous_notice_read']);
       // 10단계: 로그인 없는 복원 요청. 가상 UUID라 DB 조회 전에 401이어야 합니다.
+      // 10단계 비로그인 복원은 POST라 보내지 않습니다. 심판 격리 실행은 공개 HTTPS GET·HEAD만 허용합니다.
       if (config.step >= 10) {
-        probes.push(['/api/notes/00000000-0000-4000-8000-000000000000/restore', false, 'anonymous_note_restore', 'POST']);
+        attempts.push({ attackId: 'anonymous_note_restore',
+          expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: 'not_run' });
       }
       // 12단계: 로그인 없는 작전실 요약 요청. 수치 없이 401이어야 합니다.
       if (config.step >= 12) probes.push(['/api/ops', false, 'anonymous_ops_read']);
-      for (const [path, invalid, attackId, method = 'GET'] of probes) {
+      for (const [path, invalid, attackId] of probes) {
         const result = await fetch(new URL(path, app), {
-          method, redirect: 'error', signal: AbortSignal.timeout(10000),
+          redirect: 'error', signal: AbortSignal.timeout(10000),
           ...(invalid ? { headers: { Authorization: 'Bearer invalid' } } : {}),
         });
         let rejected = false;
@@ -80,18 +82,9 @@ export async function runAttackChecks(config) {
         observed: '미실행: 운영 정책에는 적용하지 않음(로컬 시험 정책 npm run policy:restore 7건만 통과)' });
     }
     if (config.step >= 11) {
-      // 11단계: 로그인 없이 기기 승인을 요청해도 기기 쿠키를 받거나 승인 응답을 받으면 안 됩니다.
-      const device = await fetch(new URL('/api/auth/device', app), {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
-      });
-      const issued = device.headers.getSetCookie().some(value => value.startsWith('__Host-aleph-device='));
-      let body;
-      try { body = await device.json(); } catch { /* JSON이 아닌 응답은 거부 확인으로 보지 않습니다. */ }
-      const rejected = !issued && body?.deviceApproval === undefined
-        && (device.status === 403 || (device.ok && body?.user === null));
+      // 11단계 비로그인 기기 승인 요청은 POST라 보내지 않습니다. 심판 격리 실행은 공개 HTTPS GET·HEAD만 허용합니다.
       attempts.push({ attackId: 'anonymous_device_approval',
-        expected: '로그인 없는 기기 승인 요청은 기기 쿠키·승인 상태 없이 거부',
-        observed: `HTTP ${device.status}; 기기 쿠키·승인 없는 거부 ${rejected ? '확인' : '미확인'}` });
+        expected: '로그인 없는 기기 승인 요청은 기기 쿠키·승인 상태 없이 거부', observed: 'not_run' });
       attempts.push({ attackId: 'unapproved_device_read',
         expected: '로그인했어도 승인 전 기기의 메모·공지·복원 요청은 403 DEVICE_NOT_APPROVED로 자료 없이 거부, 승인 요청 버튼이나 앱 설치만으로는 열리지 않음',
         observed: '미실행: 기기 승인 표 SQL·배포·실제 B 로그인 요청을 아직 하지 않음(로컬 모의 시험만 통과)' });
