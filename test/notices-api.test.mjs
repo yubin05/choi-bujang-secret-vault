@@ -37,7 +37,9 @@ test('메모와 강사 공지는 요청마다 서버가 정한 다른 자원 ID�
     process.env.SUPABASE_SECRET_KEY = 'sb_secret_' + 'test-only-sentinel';
     globalThis.fetch = async input => {
       const url = new URL(input instanceof Request ? input.url : input);
-      assert.equal(url.href, config.identityProvider.jwksUrl, '공지는 DB에 요청하지 않습니다.');
+      // 공지는 메모 DB를 읽지 않고, 로그인한 기기의 승인 여부만 확인합니다.
+      if (url.pathname === '/rest/v1/aleph_defense_devices') return Response.json([{ code: 'APPROVED', approved_at: '2026-11-12T00:00:00Z' }]);
+      assert.equal(url.href, config.identityProvider.jwksUrl, '공지는 메모 DB에 요청하지 않습니다.');
       return Response.json({ keys: [jwk] });
     };
 
@@ -52,14 +54,18 @@ test('메모와 강사 공지는 요청마다 서버가 정한 다른 자원 ID�
     const forgedResult = await call(noticesHandler, 'GET', { authorization: `Bearer ${forged}` });
     assert.deepEqual([forgedResult.status, forgedResult.body], [401, { error: 'UNAUTHORIZED' }]);
 
-    const read = await call(noticesHandler, 'GET', { authorization: `Bearer ${valid}` });
+    // 기기 쿠키가 없으면 로그인했어도 공지를 주지 않습니다.
+    const locked = await call(noticesHandler, 'GET', { authorization: `Bearer ${valid}` });
+    assert.deepEqual([locked.status, locked.body], [403, { error: 'DEVICE_NOT_APPROVED' }]);
+    const device = `__Host-aleph-device=${'a'.repeat(43)}`;
+    const read = await call(noticesHandler, 'GET', { authorization: `Bearer ${valid}`, cookie: device });
     assert.equal(read.status, 200);
     assert.equal(read.headers['X-Resource-Id'], 'notices.instructor');
     assert.ok(read.body.length > 0 && read.body.every(item =>
       Object.keys(item).sort().join(',') === 'body,id,title'));
 
     // 메뉴를 우회해 쿼리·본문에 다른 구역과 강사 역할을 넣어도 공지만 돌려줍니다.
-    const bypass = await call(noticesHandler, 'GET', { authorization: `Bearer ${valid}` },
+    const bypass = await call(noticesHandler, 'GET', { authorization: `Bearer ${valid}`, cookie: device },
       { id: '22222222-2222-4222-8222-000000000001', resource: 'notes.own', zone: 'notes', role: 'instructor' });
     assert.deepEqual([bypass.status, bypass.body], [200, read.body]);
 

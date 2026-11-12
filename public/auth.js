@@ -14,6 +14,8 @@
   const save = document.querySelector('#note-save');
   const cancel = document.querySelector('#note-cancel');
   const noteMessage = document.querySelector('#note-message');
+  const deviceState = document.querySelector('#device-state');
+  const deviceRequest = document.querySelector('#device-request');
   let requestVersion = 0;
   let activeSession = null;
   let editingId = null;
@@ -59,6 +61,7 @@
       }
       throw new Error('로그인 확인에 실패했습니다. 다시 로그인하세요.');
     }
+    if (response.status === 403) throw new Error('이 기기는 승인되지 않아 자료를 열 수 없습니다.');
     if (response.status === 404) throw new Error('메모가 없거나 이미 삭제되었습니다.');
     if (response.status === 409) throw new Error('같은 ID의 메모가 이미 있습니다.');
     if (response.status === 400) throw new Error('제목·내용과 메모 ID 형식을 확인하세요.');
@@ -131,17 +134,27 @@
     activeSession = session;
     const signedIn = Boolean(session?.user);
     state.textContent = signedIn ? '로그인됨' : '로그인하지 않음';
+    // 자료실은 서버 응답이 정확히 'approved'일 때만 엽니다. 앱 설치·화면 모드·버튼 누름은 보지 않습니다.
+    const approved = signedIn && session.deviceApproval === 'approved';
+    const pending = signedIn && session.deviceApproval === 'pending';
+    deviceState.textContent = !signedIn ? '로그인하면 서버가 알려 준 기기 승인 상태를 표시합니다.'
+      : approved ? '승인된 기기입니다 (서버 확인).'
+        : pending ? `승인 대기 중입니다. 확인 코드 ${session.deviceCode}를 SQL Editor에서 승인한 뒤 상태 확인을 누르세요.`
+          : session.deviceApproval === 'unknown' ? '기기 승인 상태를 확인하지 못했습니다. 잠시 후 다시 확인하세요.'
+            : '승인되지 않은 기기입니다. 승인 전에는 자료를 표시하지 않습니다.';
+    deviceRequest.hidden = !signedIn || approved;
+    deviceRequest.textContent = pending ? '승인 상태 확인' : '이 기기 승인 요청';
     form.hidden = signedIn;
     logout.hidden = !signedIn;
     const version = ++requestVersion;
     list.replaceChildren();
-    list.hidden = !signedIn;
-    workspace.hidden = !signedIn;
-    if (accountChanged || !signedIn) {
+    list.hidden = !approved;
+    workspace.hidden = !approved;
+    if (accountChanged || !approved) {
       resetEditor();
       noteMessage.textContent = '';
     }
-    if (signedIn) {
+    if (approved) {
       list.textContent = '가상 자료를 불러오는 중입니다.';
       void loadNotes(session, version);
     }
@@ -166,6 +179,20 @@
     } finally {
       password.value = '';
       login.disabled = false;
+    }
+  });
+
+  // 승인 요청은 서버에 '대기'만 남깁니다. 응답이 'approved'일 때만 render가 자료실을 엽니다.
+  deviceRequest.addEventListener('click', async () => {
+    if (!activeSession) return;
+    deviceRequest.disabled = true;
+    try {
+      const session = await authRequest('device');
+      render(session.user ? session : null);
+    } catch (error) {
+      showError(error, '기기 승인 요청');
+    } finally {
+      deviceRequest.disabled = false;
     }
   });
 
@@ -221,4 +248,6 @@
   void checkSession().then(session => render(session.user ? session : null))
     .catch(error => { render(null); showError(error, '로그인 상태를 확인'); })
     .finally(() => { login.disabled = false; });
+  // 오프라인 안내용입니다. 서비스 워커가 없는 환경에서는 건너뜁니다.
+  globalThis.navigator?.serviceWorker?.register('/sw.js').catch(() => {});
 })();

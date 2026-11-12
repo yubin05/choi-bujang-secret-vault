@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BYTE BACK | 가상 자료실</title>
+  <link rel="manifest" href="/manifest.webmanifest">
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
@@ -44,6 +45,12 @@
       </form>
       <button id="logout-button" type="button" hidden>로그아웃</button>
       <p id="auth-message" role="status" aria-live="polite"></p>
+    </section>
+    <section aria-labelledby="device-title">
+      <h2 id="device-title">기기 승인 상태</h2>
+      <p id="device-state" role="status" aria-live="polite">로그인 상태 확인 중…</p>
+      <button id="device-request" type="button" hidden>이 기기 승인 요청</button>
+      <p>앱으로 설치하거나 승인 요청 버튼을 눌러도 기기 승인은 아닙니다. 승인 여부는 서버가 등록 기기 표에서 확인하며, 이 화면은 기기 키를 만들거나 저장하지 않습니다.</p>
     </section>
     <section id="note-workspace" aria-labelledby="note-heading" hidden>
       <h2 id="note-heading">내 가상 메모</h2>

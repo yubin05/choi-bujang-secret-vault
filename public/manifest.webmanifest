@@ -1,0 +1,16 @@
+{
+  "name": "BYTE BACK 가상 자료실",
+  "short_name": "가상 자료실",
+  "description": "실습용 가상 메모 자료실입니다. 앱 설치는 기기 승인이 아니며, 승인 여부는 서버와 판정기가 정합니다.",
+  "lang": "ko",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101a28",
+  "theme_color": "#101a28",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

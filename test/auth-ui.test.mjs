@@ -6,14 +6,15 @@ import { runInNewContext } from 'node:vm';
 test('서버 쿠키 로그인·로그아웃·갱신과 메모 CRUD, 늦은 응답 차단', async () => {
   const code = await readFile(new URL('../public/auth.js', import.meta.url), 'utf8');
   const ids = ['login-form', 'login-email', 'login-password', 'login-button', 'logout-button', 'auth-state', 'auth-message', 'notes',
-    'note-workspace', 'note-form', 'note-title', 'note-body', 'note-save', 'note-cancel', 'note-message'];
+    'note-workspace', 'note-form', 'note-title', 'note-body', 'note-save', 'note-cancel', 'note-message', 'device-state', 'device-request'];
   const nodes = Object.fromEntries(ids.map(id => [id, { value: '', textContent: '', hidden: false,
     disabled: id === 'login-button', handlers: {}, children: [],
     replaceChildren(...items) { this.children = items; },
     addEventListener(name, fn) { this.handlers[name] = fn; } }]));
   let failure;
   let signOutFailure;
-  const session = { user: { id: 'test-account-a' } };
+  const session = { user: { id: 'test-account-a' }, deviceApproval: 'approved' };
+  let deviceRequests = 0;
   let signedIn = false;
   let expired = false;
   let refreshes = 0;
@@ -30,6 +31,11 @@ test('서버 쿠키 로그인·로그아웃·갱신과 메모 CRUD, 늦은 응�
       assert.equal(options.headers.Authorization, undefined);
       if (path === '/api/auth/session') {
         if (expired) { expired = false; refreshes++; }
+        return Response.json(signedIn ? session : { user: null });
+      }
+      if (path === '/api/auth/device') {
+        assert.equal(options.method, 'POST');
+        deviceRequests++;
         return Response.json(signedIn ? session : { user: null });
       }
       if (path === '/api/auth/login') {
@@ -85,6 +91,8 @@ test('서버 쿠키 로그인·로그아웃·갱신과 메모 CRUD, 늦은 응�
   failure = null;
   await submit();
   assert.equal(nodes['auth-state'].textContent, '로그인됨');
+  assert.match(nodes['device-state'].textContent, /^승인된 기기/u);
+  assert.equal(nodes['device-request'].hidden, true);
   assert.equal(nodes['login-form'].hidden, true);
   assert.equal(nodes['logout-button'].hidden, false);
   assert.equal(nodes.notes.hidden, false);
@@ -131,4 +139,56 @@ test('서버 쿠키 로그인·로그아웃·갱신과 메모 CRUD, 늦은 응�
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(nodes['auth-state'].textContent, '로그인됨');
   assert.equal(nodes.notes.children.length, 4);
+  assert.match(nodes['device-state'].textContent, /^승인된 기기/u);
+
+  // 승인 전 기기: 로그인해도 자료를 요청·표시하지 않고, 승인 요청 버튼은 서버의 '대기' 응답만 받습니다.
+  Object.assign(session, { deviceApproval: 'pending', deviceCode: 'TESTCODE' });
+  const readsBefore = reads;
+  runInNewContext(code, browser);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(nodes['auth-state'].textContent, '로그인됨');
+  assert.equal(nodes['note-workspace'].hidden, true);
+  assert.equal(nodes.notes.hidden, true);
+  assert.equal(nodes.notes.children.length, 0);
+  assert.match(nodes['device-state'].textContent, /TESTCODE/u);
+  assert.equal(nodes['device-request'].hidden, false);
+  await nodes['device-request'].handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(deviceRequests, 1);
+  assert.equal(nodes['note-workspace'].hidden, true);
+  assert.equal(reads, readsBefore);
+  // 서버가 등록 기기로 확인한 뒤에만 기존 자료실이 열립니다.
+  session.deviceApproval = 'approved';
+  await nodes['device-request'].handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(nodes['note-workspace'].hidden, false);
+  assert.equal(nodes.notes.children.length, 4);
+  assert.equal(nodes['device-request'].hidden, true);
+});
+
+test('서비스 워커는 오프라인 안내만 저장하고 API 요청은 가로채지 않음', async () => {
+  const code = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const handlers = {};
+  const cached = [];
+  const worker = {
+    self: { addEventListener: (name, fn) => { handlers[name] = fn; } },
+    caches: { open: async () => ({ add: async path => { cached.push(path); } }), match: async path => `cached:${path}` },
+    fetch: async () => ({ status: 401 }),
+  };
+  runInNewContext(code, worker);
+  let installing;
+  handlers.install({ waitUntil: promise => { installing = promise; } });
+  await installing;
+  assert.deepEqual(cached, ['/offline.html']);
+  let responded = false;
+  handlers.fetch({ request: { mode: 'cors' }, respondWith: () => { responded = true; } });
+  assert.equal(responded, false);
+  const navigate = async () => {
+    let page;
+    handlers.fetch({ request: { mode: 'navigate' }, respondWith: promise => { page = promise; } });
+    return page;
+  };
+  assert.deepEqual(await navigate(), { status: 401 });
+  worker.fetch = async () => { throw new TypeError('offline'); };
+  assert.equal(await navigate(), 'cached:/offline.html');
 });

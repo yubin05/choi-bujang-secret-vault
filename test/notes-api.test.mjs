@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import handler from '../api/notes.js';
 
@@ -27,6 +28,16 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     .setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
   const otherPair = await generateKeyPair('ES256');
   const forged = await new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(otherPair.privateKey);
+  // 심판 서명 토큰(가상): 기기 확인은 운영 엔진·판정기가 맡으므로 기기 쿠키 없이도 기존 결과를 유지해야 합니다.
+  const judgeIssuer = new URL(config.judgeIssuer).href;
+  const judge = await new SignJWT({ iss: judgeIssuer, aud: new URL(config.publicAppUrl).hostname, sub: claims.sub,
+    aleph_run: '99999999-9999-4999-8999-999999999999', aleph_role: 'judge', aleph_identity: 'a', iat: now, exp: now + 300 })
+    .setProtectedHeader({ alg: 'ES256', kid: jwk.kid }).sign(pair.privateKey);
+  // 테스트 전용 기기 ID입니다. 서버는 해시로만 기기 표를 찾습니다.
+  const approvedDevice = 'a'.repeat(43);
+  const pendingDevice = 'p'.repeat(43);
+  const deviceCookie = `__Host-aleph-device=${approvedDevice}`;
+  const hashOf = value => `eq.${createHash('sha256').update(value).digest('hex')}`;
   let databaseReads = 0;
   let databaseFailure = false;
   let ignoreOwnerFilter = false;
@@ -39,7 +50,7 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
   }));
   const call = async (authorization, method = 'GET', body, id, extraHeaders = {}) => {
     const result = { headers: {} };
-    await handler({ method, headers: { ...(authorization ? { authorization } : {}), ...extraHeaders },
+    await handler({ method, headers: { cookie: deviceCookie, ...(authorization ? { authorization } : {}), ...extraHeaders },
       query: { owner_id: claims.sub, userId: claims.sub, role: 'authenticated', ...(id !== undefined ? { id } : {}) },
       body: body ?? { userId: claims.sub, role: 'admin' } }, {
       setHeader: (key, value) => { result.headers[key] = value; },
@@ -59,7 +70,15 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     globalThis.fetch = async (input, options) => {
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.href === config.identityProvider.jwksUrl) return Response.json({ keys: [jwk] });
+      if (url.href === `${judgeIssuer}/.well-known/jwks.json`) return Response.json({ keys: [jwk] });
       assert.equal(url.origin, process.env.SUPABASE_URL);
+      if (url.pathname === '/rest/v1/aleph_defense_devices') {
+        assert.equal(options.method, 'GET', '자료 API는 기기 표를 읽기만 합니다.');
+        assert.equal(options.headers.apikey, fakeSecret);
+        const hash = url.searchParams.get('device_hash');
+        return Response.json(hash === hashOf(approvedDevice) ? [{ code: 'APPROVED', approved_at: '2026-11-12T00:00:00Z' }]
+          : hash === hashOf(pendingDevice) ? [{ code: 'PENDING1', approved_at: null }] : []);
+      }
       assert.equal(url.pathname, '/rest/v1/aleph_defense_notes');
       databaseReads++;
       assert.equal(url.searchParams.get('select'), 'id,title,content,owner_id');
@@ -107,12 +126,21 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
       assert.equal((await call(undefined, method, { title: '가상', body: '테스트' }, id)).status, 401);
       assert.equal(databaseReads, 0);
     }
+    // 로그인했어도 승인 전 기기(기기 쿠키 없음·승인 대기)는 메모 DB를 읽지 않고 403입니다.
+    for (const cookie of ['', `__Host-aleph-device=${pendingDevice}`]) {
+      const locked = await call(`Bearer ${valid}`, 'GET', undefined, undefined, { cookie });
+      assert.deepEqual([locked.status, locked.body], [403, { error: 'DEVICE_NOT_APPROVED' }]);
+    }
+    assert.equal(databaseReads, 0);
+    const judged = await call(`Bearer ${judge}`, 'GET', undefined, undefined, { cookie: '' });
+    assert.deepEqual([judged.status, judged.body.length], [200, 4]);
+    databaseReads = 0;
     const result = await call(`Bearer ${valid}`);
     assert.equal(result.status, 200);
     assert.equal(result.body.length, 4);
     assert.deepEqual(Object.keys(result.body[0]), ['id', 'title', 'body']);
     assert.equal(databaseReads, 1);
-    const cookie = `__Host-aleph-access=${encodeURIComponent(valid)}`;
+    const cookie = `__Host-aleph-access=${encodeURIComponent(valid)}; ${deviceCookie}`;
     assert.equal((await call(undefined, 'GET', undefined, undefined, { cookie })).status, 200);
     const beforeCsrf = databaseReads;
     assert.equal((await call(undefined, 'POST', { title: '가상', body: '시험' }, undefined,
@@ -196,7 +224,7 @@ test('A/B의 본인 CRUD는 유지하고 타인 접근·소유자 변경·위조
     assert.equal((await call(`Bearer ${valid}`)).status, 502);
     assert.equal((await call(undefined, 'PATCH')).status, 405);
     for (const reason of ['UNAUTHORIZED', 'ORIGIN_NOT_ALLOWED', 'NOT_OWNER_OR_MISSING', 'OWNER_MISMATCH',
-      'METHOD_NOT_ALLOWED']) {
+      'METHOD_NOT_ALLOWED', 'DEVICE_NOT_APPROVED']) {
       assert.ok(logs.includes(`aleph.denied resource=notes.own reason=${reason}`), reason);
     }
     assert.ok(logs.every(line => ![claims.sub, bId, valid, validB, fakeSecret].some(value => line.includes(value))));

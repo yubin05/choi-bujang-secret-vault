@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 import sessionHandler from '../api/auth/session.js';
@@ -21,10 +22,11 @@ test('서버 세션 검증·SDK 갱신·현재 세션 로그아웃과 실패 시
   let refreshCalls = 0;
   let logoutCalls = 0;
   let failure;
+  const devices = [];
   const cookie = token => `__Host-aleph-access=${encodeURIComponent(token)}; __Host-aleph-refresh=test-refresh`;
-  const call = async (handler, cookies, method = 'POST', origin = new URL(config.publicAppUrl).origin) => {
+  const call = async (handler, cookies, method = 'POST', origin = new URL(config.publicAppUrl).origin, query) => {
     const result = { headers: {} };
-    await handler({ method, headers: { origin, cookie: cookies } }, {
+    await handler({ method, headers: { origin, cookie: cookies }, query }, {
       setHeader: (name, value) => { result.headers[name] = value; },
       status: status => { result.status = status; return { json: value => { result.body = value; } }; },
     });
@@ -40,6 +42,23 @@ test('서버 세션 검증·SDK 갱신·현재 세션 로그아웃과 실패 시
     globalThis.fetch = async (input, options) => {
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.href === config.identityProvider.jwksUrl) return Response.json({ keys: [jwk] });
+      // 가짜 기기 승인 표: 서버는 읽기와 세 칸짜리 '대기' 행 추가만 합니다.
+      if (url.pathname === '/rest/v1/aleph_defense_devices') {
+        assert.equal(options.headers.apikey, 'sb_secret_test');
+        if (options.method === 'POST') {
+          const row = JSON.parse(options.body);
+          assert.deepEqual(Object.keys(row).sort(), ['code', 'device_hash', 'owner_id']);
+          if (devices.some(item => item.owner_id === row.owner_id && item.device_hash === row.device_hash)) {
+            return new Response(null, { status: 409 });
+          }
+          devices.push({ ...row, approved_at: null });
+          return new Response(null, { status: 201 });
+        }
+        assert.equal(options.method, 'GET');
+        const [owner, hash] = ['owner_id', 'device_hash'].map(key => url.searchParams.get(key)?.slice(3));
+        return Response.json(devices.filter(item => item.owner_id === owner && item.device_hash === hash)
+          .map(({ code, approved_at }) => ({ code, approved_at })));
+      }
       if (url.pathname === '/auth/v1/token') {
         refreshCalls++;
         assert.equal(url.searchParams.get('grant_type'), 'refresh_token');
@@ -61,13 +80,33 @@ test('서버 세션 검증·SDK 갱신·현재 세션 로그아웃과 실패 시
     assert.equal(refreshCalls, 0);
     assert.deepEqual((await call(sessionHandler)).body, { user: null });
     const restored = await call(sessionHandler, cookie(access));
-    assert.deepEqual(restored.body, { user });
+    assert.deepEqual(restored.body, { user, deviceApproval: 'none' });
     assert.equal(restored.headers['Set-Cookie'], undefined);
     assert.equal(refreshCalls, 0);
     const renewed = await call(sessionHandler, cookie(expired));
-    assert.deepEqual(renewed.body, { user });
+    assert.deepEqual(renewed.body, { user, deviceApproval: 'none' });
     assert.equal(renewed.headers['Set-Cookie'].length, 2);
     assert.equal(refreshCalls, 1);
+    // 승인 요청은 HttpOnly 기기 쿠키와 '대기'·확인 코드만 줍니다. DB에는 기기 ID의 해시만 들어갑니다.
+    const requested = await call(sessionHandler, cookie(access), 'POST', undefined, { device: 'request' });
+    assert.equal(requested.body.deviceApproval, 'pending');
+    assert.match(requested.body.deviceCode, /^[0-9A-F]{8}$/u);
+    const deviceSet = [requested.headers['Set-Cookie']].flat().find(value => value.startsWith('__Host-aleph-device='));
+    assert.match(deviceSet, /; Path=\/; HttpOnly; Secure; SameSite=Lax;/u);
+    const deviceId = deviceSet.slice('__Host-aleph-device='.length, deviceSet.indexOf(';'));
+    assert.ok(!JSON.stringify(requested.body).includes(deviceId));
+    assert.deepEqual(devices.map(row => row.device_hash), [createHash('sha256').update(deviceId).digest('hex')]);
+    // 다시 눌러도 승인되지 않고 같은 대기 상태입니다.
+    const withDevice = `${cookie(access)}; __Host-aleph-device=${deviceId}`;
+    const again = await call(sessionHandler, withDevice, 'POST', undefined, { device: 'request' });
+    assert.deepEqual(again.body, { user, deviceApproval: 'pending', deviceCode: requested.body.deviceCode });
+    assert.equal(devices.length, 1);
+    // SQL Editor에서 학생이 approved_at을 채운 뒤에만 승인으로 봅니다.
+    devices[0].approved_at = '2026-11-12T00:00:00Z';
+    assert.deepEqual((await call(sessionHandler, withDevice)).body, { user, deviceApproval: 'approved' });
+    // 로그인하지 않은 승인 요청은 대기 행을 만들지 않습니다.
+    assert.deepEqual((await call(sessionHandler, undefined, 'POST', undefined, { device: 'request' })).body, { user: null });
+    assert.equal(devices.length, 1);
     const loggedOut = await call(logoutHandler, cookie(access));
     assert.deepEqual(loggedOut.body, { ok: true });
     assert.equal(logoutCalls, 1);

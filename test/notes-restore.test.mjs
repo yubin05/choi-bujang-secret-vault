@@ -41,7 +41,8 @@ test('B의 사본 메모 한 건만 ID·소유자·내용 해시를 대조해 �
   const logs = [];
   const call = async (authorization, method = 'POST', id = target, extraHeaders = {}) => {
     const result = { headers: {} };
-    await handler({ method, headers: { ...(authorization ? { authorization: `Bearer ${authorization}` } : {}), ...extraHeaders },
+    await handler({ method, headers: { cookie: `__Host-aleph-device=${'a'.repeat(43)}`,
+      ...(authorization ? { authorization: `Bearer ${authorization}` } : {}), ...extraHeaders },
       query: { id, restore: '1', owner_id: bId }, body: { owner_id: aId, title: '위조', body: '위조' } }, {
       setHeader: (key, value) => { result.headers[key] = value; },
       status: status => { result.status = status; return { json: body => { result.body = body; }, end: () => {} }; },
@@ -58,6 +59,8 @@ test('B의 사본 메모 한 건만 ID·소유자·내용 해시를 대조해 �
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.href === config.identityProvider.jwksUrl) return Response.json({ keys: [jwk] });
       assert.equal(options.headers.apikey, fakeSecret);
+      // 복원도 승인된 기기에서만 합니다. 이 시험의 기기는 승인된 상태입니다.
+      if (url.pathname === '/rest/v1/aleph_defense_devices') return Response.json([{ code: 'APPROVED', approved_at: '2026-11-12T00:00:00Z' }]);
       databaseCalls++;
       const table = url.pathname.replace('/rest/v1/', '');
       const store = { aleph_defense_notes_backup: backup, aleph_defense_notes: notes }[table];

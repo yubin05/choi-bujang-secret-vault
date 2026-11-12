@@ -1,7 +1,7 @@
 // The student changes this check as each stage adds an attack to the same app.
 // Never return tokens, private keys, real names, or note bodies.
 export async function runAttackChecks(config) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(config.step)) throw new Error('이 단계의 공격 점검을 src/attack-check.mjs에 구현해 주세요.');
   let app;
   try {
     app = new URL(config.publicAppUrl);
@@ -76,6 +76,26 @@ export async function runAttackChecks(config) {
       attempts.push({ attackId: 'policy_restore_recheck',
         expected: '검증한 정책 사본으로 되돌린 뒤 정상 요청은 allow, 침공 때 열린 B 공지 쓰기는 다시 deny',
         observed: '미실행: 운영 정책에는 적용하지 않음(로컬 시험 정책 npm run policy:restore 7건만 통과)' });
+    }
+    if (config.step >= 11) {
+      // 11단계: 로그인 없이 기기 승인을 요청해도 기기 쿠키를 받거나 승인 응답을 받으면 안 됩니다.
+      const device = await fetch(new URL('/api/auth/device', app), {
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      const issued = device.headers.getSetCookie().some(value => value.startsWith('__Host-aleph-device='));
+      let body;
+      try { body = await device.json(); } catch { /* JSON이 아닌 응답은 거부 확인으로 보지 않습니다. */ }
+      const rejected = !issued && body?.deviceApproval === undefined
+        && (device.status === 403 || (device.ok && body?.user === null));
+      attempts.push({ attackId: 'anonymous_device_approval',
+        expected: '로그인 없는 기기 승인 요청은 기기 쿠키·승인 상태 없이 거부',
+        observed: `HTTP ${device.status}; 기기 쿠키·승인 없는 거부 ${rejected ? '확인' : '미확인'}` });
+      attempts.push({ attackId: 'unapproved_device_read',
+        expected: '로그인했어도 승인 전 기기의 메모·공지·복원 요청은 403 DEVICE_NOT_APPROVED로 자료 없이 거부, 승인 요청 버튼이나 앱 설치만으로는 열리지 않음',
+        observed: '미실행: 기기 승인 표 SQL·배포·실제 B 로그인 요청을 아직 하지 않음(로컬 모의 시험만 통과)' });
+      attempts.push({ attackId: 'approved_device_vault',
+        expected: 'SQL Editor에서 확인 코드로 승인한 기기에서만 기존 자료실(본인 메모 추가·수정·삭제)이 열림',
+        observed: '미실행: 실제 승인과 승인된 기기의 로그인 확인을 아직 하지 않음(로컬 모의 시험만 통과)' });
     }
     return attempts;
   }
