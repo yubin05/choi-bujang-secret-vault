@@ -24,7 +24,9 @@
 **2026-11-13 배포 실측(배포 커밋 `da51982`, 시험 계정 B, SQL Editor로 승인한 기기):** `step10`·`step11` SQL을 실행한 뒤 배포된 작전실을 열고 **실측 시작**을 눌렀습니다. 아래 두 결과는 그 화면을 그대로 옮긴 것입니다.
 - 실제로 보낸 19건(정상 9건 허용, 금지 10건 거부)은 모두 기대와 일치했습니다. 보낼 수 없는 8건은 미실행입니다.
 - 요약 줄의 `confirmed=7 not_run=4 unavailable=0`은 뒤에 붙은 항목 11개의 상태 수와 같고, 메모 본문과 사용자 ID는 없습니다.
-- 이 줄과 Vercel Runtime Logs의 같은 id 줄을 대조하는 일과 심판 판정은 아직 하지 않았습니다.
+- Vercel Runtime Logs(같은 배포, 요청 `q26rg-1794551477260-aab054a7ea1f`)의 같은 id `aleph.ops` 줄과 대조했고, 467자가 글자 그대로 같았습니다. 로그에도 메모 본문과 이메일이 없습니다.
+- 같은 로그의 `aleph.denied` 6줄은 표의 금지 요청 6건과 요청 ID가 같습니다(`UNAUTHORIZED` 3, `NOT_OWNER_OR_MISSING`, `NOTICES_READ_ONLY`, `NOT_IN_BACKUP`).
+- 심판 판정은 아직입니다.
 
 작전실 요약 줄:
 ```
