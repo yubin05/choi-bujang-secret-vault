@@ -67,7 +67,7 @@ export async function runAttackChecks(config) {
     if (config.step >= 12) {
       attempts.push({ attackId: 'ops_record_match',
         expected: '승인 기기의 작전실 화면 줄이 Vercel Runtime Logs의 같은 id aleph.ops 줄과 글자 그대로 같고 메모 본문이 없음',
-        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(작전실 화면 줄과 Runtime Logs 같은 id 줄의 대조는 아직 하지 않음)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(B가 작전실 화면 줄과 Runtime Logs 같은 id 줄을 대조한 결과는 README 12단계)' });
       attempts.push({ attackId: 'stage_matrix_live',
         expected: '작전실 실측 표에서 1~11단계 정상 9건 허용·금지 10건 거부가 실제 응답으로 남고 보내지 않은 8건은 미실행',
         observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(B가 배포된 작전실에서 실측한 표는 README 12단계)' });
