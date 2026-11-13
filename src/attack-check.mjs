@@ -38,7 +38,7 @@ export async function runAttackChecks(config) {
     if (config.step >= 8) {
       attempts.push({ attackId: 'cross_zone_direct_api',
         expected: '메뉴를 우회한 직접 API 요청에서 남의 메모·공지 쓰기는 거부하고 본인 메모 읽기는 유지',
-        observed: '미실행: 실제 A/B 로그인 요청은 보내지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(A 로그인 요청은 아직 없음, B 브라우저 실측은 README 12단계 표)' });
     }
     if (config.step >= 9) {
       attempts.push({ attackId: 'burst_read_revocation',
@@ -48,7 +48,7 @@ export async function runAttackChecks(config) {
     if (config.step >= 10) {
       attempts.push({ attackId: 'backup_note_restore',
         expected: '시험 계정 B의 사본 메모 한 건만 ID·소유자·내용 해시를 대조해 되살리고, 남의 사본·사본에 없는 ID는 404, 사본 해시 불일치는 409',
-        observed: '미실행: 비공개 사본 SQL·배포·실제 B 로그인 요청을 아직 하지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(사본 SQL은 실행해 B 사본 1건이 현재 메모와 같음, 사본 메모 복원 요청은 아직 보내지 않음)' });
       attempts.push({ attackId: 'policy_restore_recheck',
         expected: '검증한 정책 사본으로 되돌린 뒤 정상 요청은 allow, 침공 때 열린 B 공지 쓰기는 다시 deny',
         observed: '미실행: 운영 정책에는 적용하지 않음(로컬 시험 정책 npm run policy:restore 7건만 통과)' });
@@ -59,18 +59,18 @@ export async function runAttackChecks(config) {
         expected: '로그인 없는 기기 승인 요청은 기기 쿠키·승인 상태 없이 거부', observed: 'not_run' });
       attempts.push({ attackId: 'unapproved_device_read',
         expected: '로그인했어도 승인 전 기기의 메모·공지·복원 요청은 403 DEVICE_NOT_APPROVED로 자료 없이 거부, 승인 요청 버튼이나 앱 설치만으로는 열리지 않음',
-        observed: '미실행: 기기 승인 표 SQL·배포·실제 B 로그인 요청을 아직 하지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(승인하지 않은 다른 브라우저의 요청은 아직 보내지 않음)' });
       attempts.push({ attackId: 'approved_device_vault',
         expected: 'SQL Editor에서 확인 코드로 승인한 기기에서만 기존 자료실(본인 메모 추가·수정·삭제)이 열림',
-        observed: '미실행: 실제 승인과 승인된 기기의 로그인 확인을 아직 하지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(B 기기를 SQL Editor로 승인한 뒤의 자료실 요청은 README 12단계 표)' });
     }
     if (config.step >= 12) {
       attempts.push({ attackId: 'ops_record_match',
         expected: '승인 기기의 작전실 화면 줄이 Vercel Runtime Logs의 같은 id aleph.ops 줄과 글자 그대로 같고 메모 본문이 없음',
-        observed: '미실행: 이 저장점의 배포·승인 기기 로그인·Runtime Logs 대조를 아직 하지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(작전실 화면 줄과 Runtime Logs 같은 id 줄의 대조는 아직 하지 않음)' });
       attempts.push({ attackId: 'stage_matrix_live',
         expected: '작전실 실측 표에서 1~11단계 정상 9건 허용·금지 10건 거부가 실제 응답으로 남고 보내지 않은 8건은 미실행',
-        observed: '미실행: 배포된 작전실에서 실측 시작을 아직 누르지 않음(로컬 모의 시험만 통과)' });
+        observed: '미실행: 자기 점검은 로그인 요청을 보내지 않음(B가 배포된 작전실에서 실측한 표는 README 12단계)' });
       attempts.push({ attackId: 'final_assault_41',
         expected: '총공세 41종 공격은 운영 엔진·심판이 실행해 방어 여부를 판정',
         observed: '미실행: 41종 시험은 심판이 수행하며 학생 자기 점검에서 실행하지 않음' });

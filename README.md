@@ -21,7 +21,45 @@
 2026-11-12 로컬 실행: `node --test test/*.test.mjs` 43개, `npm run decider:test` 4개, `npm run detect:test`, `npm run build -- --local`이 통과했습니다.
 `package.json`·`package-lock.json`은 바꾸지 않았고, 커밋 전 HEAD(`3586b3d`)를 새로 복제한 저장소의 `npm install`도 오류 없이 끝났습니다. 가상 요청·가짜 DB 연습이며 심판 판정이 아닙니다.
 `npm run bundle`의 자기 점검은 토큰 없는 `GET /data.json` 1건만 실제로 보내 받은 HTTP 상태만 적습니다. 비로그인·잘못된 토큰의 `/api/notes`, 공지·작전실·복원·기기 승인 요청은 보내지 않아 `not_run`, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
-이 저장점의 푸시·배포, 배포된 작전실의 실측과 Runtime Logs 대조, `step10`·`step11` SQL 실행, 심판 판정은 아직 실행하지 않았습니다.
+**2026-11-13 배포 실측(배포 커밋 `da51982`, 시험 계정 B, SQL Editor로 승인한 기기):** `step10`·`step11` SQL을 실행한 뒤 배포된 작전실을 열고 **실측 시작**을 눌렀습니다. 아래 두 결과는 그 화면을 그대로 옮긴 것입니다.
+- 실제로 보낸 19건(정상 9건 허용, 금지 10건 거부)은 모두 기대와 일치했습니다. 보낼 수 없는 8건은 미실행입니다.
+- 요약 줄의 `confirmed=7 not_run=4 unavailable=0`은 뒤에 붙은 항목 11개의 상태 수와 같고, 메모 본문과 사용자 ID는 없습니다.
+- 이 줄과 Vercel Runtime Logs의 같은 id 줄을 대조하는 일과 심판 판정은 아직 하지 않았습니다.
+
+작전실 요약 줄:
+```
+aleph.ops id=99439971-084b-42f3-8fa6-c628b406c9c0 confirmed=7 not_run=4 unavailable=0 rules.loaded=confirmed:6 rules.verdicts=not_run:- detection.events=not_run:- revocation.approved_devices=confirmed:1 revocation.pending_devices=confirmed:0 revocation.executed=not_run:- restore.policy_version=confirmed:step9@46578ea restore.policy_fingerprint=confirmed:cf54e7d58f88 restore.policy_applied=not_run:- restore.note_copies=confirmed:1 restore.note_matching=confirmed:1
+```
+
+| 단계 | 구분 | 요청 | 기대 결과 | 실제 API 결과 | 대조 | Vercel 응답 ID | 확인 시각 |
+|---|---|---|---|---|---|---|---|
+| 1 | 정상 | GET / 첫 화면 | HTTP 200 | HTTP 200 | 기대와 일치 | icn1::bh84w-1794551510159-340f1fe9fcf9 | 2026-11-13T06:31:50.000Z |
+| 1 | 금지 | GET /data.json 비로그인 | HTTP 404·410 (공개 메모 없음) | HTTP 404 | 기대와 일치 | icn1::bh84w-1794551510377-83cf679a5dba | 2026-11-13T06:31:50.000Z |
+| 2 | 정상 | GET /api/notes 로그인 | HTTP 200 · 배열 | HTTP 200 · 배열 1건 | 기대와 일치 | icn1::iad1::88zl8-1794551510389-423f168244ed | 2026-11-13T06:31:51.000Z |
+| 2 | 금지 | GET /api/notes 비로그인 | HTTP 401 UNAUTHORIZED | HTTP 401 · UNAUTHORIZED | 기대와 일치 | icn1::iad1::gjzfj-1794551512043-2a241779df96 | 2026-11-13T06:31:52.000Z |
+| 3 | 정상 | POST /api/notes 실측용 가상 메모 추가 | HTTP 201 · id | HTTP 201 · id 받음 | 기대와 일치 | icn1::iad1::gjzfj-1794551512275-1edbaadc2e26 | 2026-11-13T06:31:53.000Z |
+| 3 | 정상 | PUT /api/notes/:id 실측용 메모 수정 | HTTP 200 · 같은 id | HTTP 200 · id 받음 | 기대와 일치 | icn1::iad1::gjzfj-1794551513876-0ca91bb40ab6 | 2026-11-13T06:31:55.000Z |
+| 3 | 금지 | GET /api/notes 잘못된 토큰 | HTTP 401 UNAUTHORIZED | HTTP 401 · UNAUTHORIZED | 기대와 일치 | icn1::iad1::gjzfj-1794551515408-97c1a0f749e3 | 2026-11-13T06:31:55.000Z |
+| 3 | 정상 | DELETE /api/notes/:id 실측용 메모 삭제 | HTTP 204 | HTTP 204 | 기대와 일치 | icn1::iad1::wksbb-1794551523687-131a995b53f1 | 2026-11-13T06:32:04.000Z |
+| 4 | 정상 | GET /api/notes/:id 내 메모 | HTTP 200 · 같은 id | HTTP 200 · id 받음 | 기대와 일치 | icn1::iad1::gjzfj-1794551515647-ea2bdb2a1e42 | 2026-11-13T06:31:56.000Z |
+| 4 | 금지 | GET /api/notes/:id 내 것이 아닌 ID | HTTP 404 NOTE_NOT_FOUND (남의 메모와 같은 응답) | HTTP 404 · NOTE_NOT_FOUND | 기대와 일치 | icn1::iad1::gjzfj-1794551516737-bf78c1b17e0d | 2026-11-13T06:31:57.000Z |
+| 4 | 금지 | PUT /api/notes/:id 소유자 바꾸기(owner_id) | HTTP 400 INVALID_NOTE | HTTP 400 · INVALID_NOTE | 기대와 일치 | icn1::iad1::gjzfj-1794551517853-bbf7cc433848 | 2026-11-13T06:31:58.000Z |
+| 5 | 정상 | POST /api/auth/session 서버 로그인 확인 | HTTP 200 · user 있음 | HTTP 200 · user 있음 · deviceApproval=approved | 기대와 일치 | icn1::iad1::gjzfj-1794551518693-e63bf2f29469 | 2026-11-13T06:31:59.000Z |
+| 5 | 금지 | POST /api/auth/session 쿠키 없이 | HTTP 200 · user 없음 | HTTP 200 · user 없음 | 기대와 일치 | icn1::iad1::88zl8-1794551519576-d65e3baf8eb7 | 2026-11-13T06:31:59.000Z |
+| 6 | 정상 | 등록 기기의 엔진 경유 요청 | allow | 미실행: 운영 엔진·판정기 경로라 이 화면에서 보낼 수 없음(심판 수행, npm run decider:test는 가상 연습) | 미실행 | - | - |
+| 6 | 금지 | 미등록 기기의 엔진 경유 요청 | deny · device_not_registered | 미실행: 운영 엔진·판정기 경로라 이 화면에서 보낼 수 없음(심판 수행, npm run decider:test는 가상 연습) | 미실행 | - | - |
+| 7 | 정상 | 다시 로그인한 뒤 새 요청 | allow | 미실행: 운영 엔진·판정기 경로라 이 화면에서 보낼 수 없음(심판 수행, npm run decider:test는 가상 연습) | 미실행 | - | - |
+| 7 | 금지 | 복합 이상 접속 | step_up · step_up_required | 미실행: 운영 엔진·판정기 경로라 이 화면에서 보낼 수 없음(심판 수행, npm run decider:test는 가상 연습) | 미실행 | - | - |
+| 8 | 정상 | GET /api/notices 공지 읽기 | HTTP 200 · 배열 | HTTP 200 · 배열 2건 | 기대와 일치 | icn1::iad1::v2zrj-1794551519795-19d86d448b08 | 2026-11-13T06:32:00.000Z |
+| 8 | 금지 | POST /api/notices 공지 쓰기 | HTTP 405 METHOD_NOT_ALLOWED | HTTP 405 · METHOD_NOT_ALLOWED | 기대와 일치 | icn1::iad1::qdsvk-1794551521033-2ad8a6bfdf61 | 2026-11-13T06:32:01.000Z |
+| 9 | 정상 | 평소 조회 사건 | observe | 미실행: 운영 반 엔진의 사건 전달이 연결되지 않음(npm run detect:test는 가상 사건 연습) | 미실행 | - | - |
+| 9 | 금지 | 10분 안 GET 121건 | propose_revocation · burst_read | 미실행: 운영 반 엔진의 사건 전달이 연결되지 않음(npm run detect:test는 가상 사건 연습) | 미실행 | - | - |
+| 10 | 정상 | POST /api/notes/:id/restore 사본 메모 복원 | HTTP 200 · ownerMatches | 미실행: 사본으로 현재 메모를 덮어써 자동 실측하지 않음(README 10단계 절차 2로 직접 실행) | 미실행 | - | - |
+| 10 | 금지 | POST /api/notes/:id/restore 사본에 없는 ID | HTTP 404 NOTE_NOT_FOUND | HTTP 404 · NOTE_NOT_FOUND | 기대와 일치 | icn1::iad1::v2zrj-1794551521283-8cad59868207 | 2026-11-13T06:32:02.000Z |
+| 10 | 금지 | POST /api/notes/:id/restore 비로그인 | HTTP 401 UNAUTHORIZED | HTTP 401 · UNAUTHORIZED | 기대와 일치 | icn1::iad1::48rmc-1794551522373-4131435d2f47 | 2026-11-13T06:32:02.000Z |
+| 11 | 정상 | POST /api/auth/session 이 기기 승인 상태 | HTTP 200 · deviceApproval=approved | HTTP 200 · user 있음 · deviceApproval=approved | 기대와 일치 | icn1::iad1::gjzfj-1794551522587-7eb46cee44b9 | 2026-11-13T06:32:03.000Z |
+| 11 | 금지 | POST /api/auth/device 비로그인 승인 요청 | HTTP 200 · user 없음 · 승인 상태 없음 | HTTP 200 · user 없음 | 기대와 일치 | icn1::iad1::wksbb-1794551523462-77e35a6c4f16 | 2026-11-13T06:32:03.000Z |
+| 11 | 금지 | 승인 전 기기의 자료 요청 | HTTP 403 DEVICE_NOT_APPROVED | 미실행: 이 브라우저는 승인된 기기라 보낼 수 없음(승인하지 않은 다른 브라우저에서 확인) | 미실행 | - | - |
 
 ## 설치·실행·중지·복구 안내
 
@@ -70,7 +108,9 @@
 | 탈환 작전실 `/ops.html` | 12단계 커밋·배포 | 재현 순서 6 | 페이지를 닫으면 끝납니다(저장하는 상태 없음). 실측은 버튼을 누를 때만 요청을 보냅니다 | `git restore` 뒤 테스트·커밋·배포 |
 
 Vercel 기능 출처: [Pause Project](https://vercel.com/docs/projects/managing-projects), [Instant Rollback](https://vercel.com/docs/instant-rollback), [환경변수 적용 시점](https://vercel.com/docs/environment-variables).
-확인하지 않은 것: 새 Vercel 프로젝트·새 Supabase 프로젝트에서 이 순서 전체를 재현하지 않았고, Pause Project·Instant Rollback·기기 승인 취소는 실행하지 않았습니다. `step10`·`step11` SQL은 아직 DB에 실행하지 않았습니다.
+확인하지 않은 것: 새 Vercel 프로젝트·새 Supabase 프로젝트에서 이 순서 전체를 재현하지 않았고, Pause Project·Instant Rollback·기기 승인 취소는 실행하지 않았습니다. `step10`·`step11` SQL은 2026-11-13에 실행했습니다. 결과는 Git에서 제외되는 `sql/result-step10.json`·`sql/result-step11.json`에 있습니다.
+- `step10`: B 사본 1건, `same_as_current=true`
+- `step11`: 비로그인·로그인 사용자 모두 읽기 불가, 서버는 읽기·추가만 가능, 승인 변경 불가
 
 ## 11단계 저장점: 나만의 접속 앱을 완성합니다
 
@@ -137,7 +177,7 @@ Vercel 기능 출처: [Pause Project](https://vercel.com/docs/projects/managing-
 
 | 항목 | 내용 |
 |---|---|
-| 되돌리는 것 | 지정한 시험 계정 B의 가상 메모 `B 공개 시험 메모` 한 건. ID: **미기록**(아래 SQL 결과의 `id`를 받아 적습니다) |
+| 되돌리는 것 | 지정한 시험 계정 B의 가상 메모 `B 공개 시험 메모` 한 건. ID: `201063bd-e54d-4733-b659-625b9ea356cc`(2026-11-13 `step10` SQL 결과) |
 | 바꾸지 않는 것 | 정책·규칙(판정기, `allowedRoutes`, DB 권한), 다른 메모(A 메모, B의 다른 메모, 같은 ID를 쓰는 다른 계정 메모), 비공개 사본 표 |
 | 감사 기록 | 서버 로그에 `aleph.restored resource=notes.own note=<ID> sha256=<해시>` 한 줄을 덧붙입니다. 기존 로그와 거부 기록(`aleph.denied`)은 지우지 않습니다 |
 | 거부 | 사본에 없거나 남의 사본이면 404, 사본 해시가 틀리면 409 `BACKUP_HASH_MISMATCH`, 같은 ID를 다른 계정 메모가 쓰면 덮어쓰지 않고 409 |
