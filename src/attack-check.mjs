@@ -13,13 +13,9 @@ export async function runAttackChecks(config) {
     throw new Error('aleph.config.json의 실제 배포 주소를 먼저 넣어 주세요.');
   }
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
-  const response = await fetch(new URL('/data.json', app), {
-    redirect: 'error', signal: AbortSignal.timeout(10000),
-  });
   if (config.step >= 2) {
-    // 보낸 요청의 observed에는 받은 HTTP 상태만 적습니다. 요청 ID·시각·본문 요약은 실행마다 달라 심판이 다시 보낸 요청 기록과 맞지 않습니다.
-    const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
-      observed: `HTTP ${response.status}` }];
+    // 2단계부터 자기 점검은 요청을 보내지 않습니다. /data.json도 보내지 않으므로 not_run이며, 보낸 요청이 없으니 상태를 적지 않습니다.
+    const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함', observed: 'not_run' }];
     // /api 점검은 보내지 않고 not_run으로 둡니다. 심판 격리 실행 기록에 /api 요청이 남지 않아 보낸 상태를 대조할 수 없고, 복원은 POST입니다.
     for (const [step, attackId] of [[3, 'anonymous_api_read'], [3, 'invalid_token_read'], [8, 'anonymous_notice_read'],
       [10, 'anonymous_note_restore'], [12, 'anonymous_ops_read']]) {
@@ -77,6 +73,9 @@ export async function runAttackChecks(config) {
     }
     return attempts;
   }
+  const response = await fetch(new URL('/data.json', app), {
+    redirect: 'error', signal: AbortSignal.timeout(10000),
+  });
   let visible = false;
   if (response.ok) {
     try {

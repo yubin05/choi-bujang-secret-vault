@@ -20,7 +20,7 @@
 
 2026-11-12 로컬 실행: `node --test test/*.test.mjs` 43개, `npm run decider:test` 4개, `npm run detect:test`, `npm run build -- --local`이 통과했습니다.
 `package.json`·`package-lock.json`은 바꾸지 않았고, 커밋 전 HEAD(`3586b3d`)를 새로 복제한 저장소의 `npm install`도 오류 없이 끝났습니다. 가상 요청·가짜 DB 연습이며 심판 판정이 아닙니다.
-`npm run bundle`의 자기 점검은 토큰 없는 `GET /data.json` 1건만 실제로 보내 받은 HTTP 상태만 적습니다. 비로그인·잘못된 토큰의 `/api/notes`, 공지·작전실·복원·기기 승인 요청은 보내지 않아 `not_run`, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
+`npm run bundle`의 자기 점검은 요청을 보내지 않습니다. 토큰 없는 `/data.json`·`/api/notes`, 잘못된 토큰의 `/api/notes`, 공지·작전실·복원·기기 승인 점검은 `not_run`, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
 **2026-11-13 배포 실측(배포 커밋 `da51982`, 시험 계정 B, SQL Editor로 승인한 기기):** `step10`·`step11` SQL을 실행한 뒤 배포된 작전실을 열고 **실측 시작**을 눌렀습니다. 아래 두 결과는 그 화면을 그대로 옮긴 것입니다.
 - 실제로 보낸 19건(정상 9건 허용, 금지 10건 거부)은 모두 기대와 일치했습니다. 보낼 수 없는 8건은 미실행입니다.
 - 요약 줄의 `confirmed=7 not_run=4 unavailable=0`은 뒤에 붙은 항목 11개의 상태 수와 같고, 메모 본문과 사용자 ID는 없습니다.

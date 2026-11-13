@@ -47,26 +47,19 @@ test('2단계 빌드는 원본과 이전 정적 파일의 메모를 공개하지
   }
 });
 
-test('자기 점검은 보낸 요청의 받은 HTTP 상태만 기록한다', async () => {
+test('2단계부터 자기 점검은 요청을 보내지 않고 보내지 않은 점검을 not_run으로 기록한다', async () => {
   const originalFetch = globalThis.fetch;
   try {
     const config = { step: 2, sampleMarker: 'SAMPLE_NOTE_1', publicAppUrl: 'https://example.vercel.app' };
-    for (const [body, status] of [['{"notes":[{}]}', 200], ['<html/>', 404], ['error', 500]]) {
-      // 요청 ID·시각 헤더가 있어도 observed에는 들어가지 않습니다.
-      globalThis.fetch = async () => new Response(body, { status,
-        headers: { 'x-vercel-id': 'icn1::test-1', date: 'Fri, 13 Nov 2026 00:36:08 GMT' } });
-      const [result] = await runAttackChecks(config);
-      assert.equal(result.observed, `HTTP ${status}`);
-    }
-    // 12단계에서도 실제로 보내는 요청은 /data.json 1건이고, /api 점검은 보내지 않아 not_run입니다.
     const sent = [];
     globalThis.fetch = async url => { sent.push(new URL(url).pathname); return new Response('', { status: 404 }); };
+    const [first] = await runAttackChecks(config);
+    assert.equal(first.observed, 'not_run');
     const results = await runAttackChecks({ ...config, step: 12 });
-    assert.deepEqual(sent, ['/data.json']);
+    assert.deepEqual(sent, []);
     const observed = Object.fromEntries(results.map(item => [item.attackId, item.observed]));
-    assert.equal(observed.anonymous_note_read, 'HTTP 404');
-    for (const id of ['anonymous_api_read', 'invalid_token_read', 'anonymous_notice_read', 'anonymous_note_restore',
-      'anonymous_ops_read', 'anonymous_device_approval']) {
+    for (const id of ['anonymous_note_read', 'anonymous_api_read', 'invalid_token_read', 'anonymous_notice_read',
+      'anonymous_note_restore', 'anonymous_ops_read', 'anonymous_device_approval']) {
       assert.equal(observed[id], 'not_run');
     }
   } finally {
