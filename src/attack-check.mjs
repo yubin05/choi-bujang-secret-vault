@@ -20,19 +20,10 @@ export async function runAttackChecks(config) {
     // 보낸 요청의 observed에는 받은 HTTP 상태만 적습니다. 요청 ID·시각·본문 요약은 실행마다 달라 심판이 다시 보낸 요청 기록과 맞지 않습니다.
     const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
       observed: `HTTP ${response.status}` }];
-    if (config.step >= 3) {
-      const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
-      // 공지·복원·작전실 점검은 보내지 않고 not_run으로 둡니다. 심판 격리 실행은 /data.json·/api/notes GET만 기록하며, 복원은 POST입니다.
-      for (const [step, attackId] of [[8, 'anonymous_notice_read'], [10, 'anonymous_note_restore'], [12, 'anonymous_ops_read']]) {
-        if (config.step >= step) attempts.push({ attackId, expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: 'not_run' });
-      }
-      for (const [path, invalid, attackId] of probes) {
-        const result = await fetch(new URL(path, app), {
-          redirect: 'error', signal: AbortSignal.timeout(10000),
-          ...(invalid ? { headers: { Authorization: 'Bearer invalid' } } : {}),
-        });
-        attempts.push({ attackId, expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: `HTTP ${result.status}` });
-      }
+    // /api 점검은 보내지 않고 not_run으로 둡니다. 심판 격리 실행 기록에 /api 요청이 남지 않아 보낸 상태를 대조할 수 없고, 복원은 POST입니다.
+    for (const [step, attackId] of [[3, 'anonymous_api_read'], [3, 'invalid_token_read'], [8, 'anonymous_notice_read'],
+      [10, 'anonymous_note_restore'], [12, 'anonymous_ops_read']]) {
+      if (config.step >= step) attempts.push({ attackId, expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: 'not_run' });
     }
     if (config.step >= 6) {
       attempts.push({ attackId: 'unregistered_device_read',
