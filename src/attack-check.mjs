@@ -31,14 +31,10 @@ export async function runAttackChecks(config) {
       observed: await seen(response, 'GET /data.json 토큰 없음') }];
     if (config.step >= 3) {
       const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
-      if (config.step >= 8) probes.push(['/api/notices', false, 'anonymous_notice_read']);
-      // 10단계 비로그인 복원은 POST라 보내지 않습니다. 심판 격리 실행은 공개 HTTPS GET·HEAD만 허용합니다.
-      if (config.step >= 10) {
-        attempts.push({ attackId: 'anonymous_note_restore',
-          expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: 'not_run' });
+      // 공지·복원·작전실 점검은 보내지 않고 not_run으로 둡니다. 심판 격리 실행은 /data.json·/api/notes GET만 기록하며, 복원은 POST입니다.
+      for (const [step, attackId] of [[8, 'anonymous_notice_read'], [10, 'anonymous_note_restore'], [12, 'anonymous_ops_read']]) {
+        if (config.step >= step) attempts.push({ attackId, expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: 'not_run' });
       }
-      // 12단계: 로그인 없는 작전실 요약 요청. 수치 없이 401이어야 합니다.
-      if (config.step >= 12) probes.push(['/api/ops', false, 'anonymous_ops_read']);
       for (const [path, invalid, attackId] of probes) {
         const result = await fetch(new URL(path, app), {
           redirect: 'error', signal: AbortSignal.timeout(10000),
