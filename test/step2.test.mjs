@@ -47,21 +47,28 @@ test('2단계 빌드는 원본과 이전 정적 파일의 메모를 공개하지
   }
 });
 
-test('2단계 자기 점검은 data.json의 실제 상태·공개 메모 수와 보낸 요청만 기록한다', async () => {
+test('자기 점검은 보낸 요청의 받은 HTTP 상태만 기록한다', async () => {
   const originalFetch = globalThis.fetch;
   try {
     const config = { step: 2, sampleMarker: 'SAMPLE_NOTE_1', publicAppUrl: 'https://example.vercel.app' };
-    for (const [body, status, seen] of [['{"notes":[]}', 200, 'HTTP 200 notes 0건'], ['{"notes":[{}]}', 200, 'HTTP 200 notes 1건'],
-      ['<html/>', 200, 'HTTP 200'], ['<html/>', 404, 'HTTP 404'], ['error', 500, 'HTTP 500']]) {
-      globalThis.fetch = async () => new Response(body, { status });
+    for (const [body, status] of [['{"notes":[{}]}', 200], ['<html/>', 404], ['error', 500]]) {
+      // 요청 ID·시각 헤더가 있어도 observed에는 들어가지 않습니다.
+      globalThis.fetch = async () => new Response(body, { status,
+        headers: { 'x-vercel-id': 'icn1::test-1', date: 'Fri, 13 Nov 2026 00:36:08 GMT' } });
       const [result] = await runAttackChecks(config);
-      assert.equal(result.observed, `${seen} · GET /data.json 토큰 없음 · 요청 ID - · 시각 -`);
+      assert.equal(result.observed, `HTTP ${status}`);
     }
-    // 응답 헤더의 요청 ID·시각은 그대로 기록합니다.
-    globalThis.fetch = async () => new Response('<html/>', { status: 404,
-      headers: { 'x-vercel-id': 'icn1::test-1', date: 'Fri, 13 Nov 2026 00:36:08 GMT' } });
-    const [withIds] = await runAttackChecks(config);
-    assert.equal(withIds.observed, 'HTTP 404 · GET /data.json 토큰 없음 · 요청 ID icn1::test-1 · 시각 2026-11-13T00:36:08.000Z');
+    // 3단계부터 /api/notes 두 요청도 상태만 적고, 보내지 않은 점검은 not_run입니다.
+    globalThis.fetch = async url => new Response('{"error":"UNAUTHORIZED"}',
+      { status: String(url).endsWith('/data.json') ? 404 : 401 });
+    const results = await runAttackChecks({ ...config, step: 12 });
+    const observed = Object.fromEntries(results.map(item => [item.attackId, item.observed]));
+    assert.equal(observed.anonymous_note_read, 'HTTP 404');
+    assert.equal(observed.anonymous_api_read, 'HTTP 401');
+    assert.equal(observed.invalid_token_read, 'HTTP 401');
+    for (const id of ['anonymous_notice_read', 'anonymous_note_restore', 'anonymous_ops_read', 'anonymous_device_approval']) {
+      assert.equal(observed[id], 'not_run');
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

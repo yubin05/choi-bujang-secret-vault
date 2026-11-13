@@ -20,7 +20,7 @@
 
 2026-11-12 로컬 실행: `node --test test/*.test.mjs` 43개, `npm run decider:test` 4개, `npm run detect:test`, `npm run build -- --local`이 통과했습니다.
 `package.json`·`package-lock.json`은 바꾸지 않았고, 커밋 전 HEAD(`3586b3d`)를 새로 복제한 저장소의 `npm install`도 오류 없이 끝났습니다. 가상 요청·가짜 DB 연습이며 심판 판정이 아닙니다.
-`npm run bundle`의 자기 점검은 로그인 없는 `/api/ops` 요청만 실제로 보내고, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
+`npm run bundle`의 자기 점검은 토큰 없는 `GET /data.json`, `GET /api/notes`와 잘못된 토큰의 `GET /api/notes` 3건만 실제로 보내 받은 HTTP 상태만 적습니다. 공지·작전실·복원·기기 승인 요청은 보내지 않아 `not_run`, 작전실 기록 대조·실측 표·41종 총공세는 미실행으로 기록합니다.
 이 저장점의 푸시·배포, 배포된 작전실의 실측과 Runtime Logs 대조, `step10`·`step11` SQL 실행, 심판 판정은 아직 실행하지 않았습니다.
 
 ## 설치·실행·중지·복구 안내

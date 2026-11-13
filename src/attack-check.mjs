@@ -17,21 +17,9 @@ export async function runAttackChecks(config) {
     redirect: 'error', signal: AbortSignal.timeout(10000),
   });
   if (config.step >= 2) {
-    // observed에는 실제로 받은 HTTP 상태·오류 코드와 실제로 보낸 요청만 적습니다. 해석 문구는 넣지 않습니다.
-    const seen = async (result, request) => {
-      let code = '';
-      try {
-        const body = await result.json();
-        if (/^[A-Z_]{1,40}$/u.test(body?.error ?? '')) code = ` ${body.error}`;
-        if (Array.isArray(body?.notes)) code += ` notes ${body.notes.length}건`;
-      } catch { /* JSON이 아닌 응답은 상태만 적습니다. */ }
-      // 요청 ID·시각은 응답 헤더 값 그대로 적어 심판의 요청 기록과 하나씩 잇습니다. 없으면 '-'입니다.
-      const at = Date.parse(result.headers.get('date') ?? '');
-      return `HTTP ${result.status}${code} · ${request} · 요청 ID ${result.headers.get('x-vercel-id') ?? '-'}`
-        + ` · 시각 ${Number.isFinite(at) ? new Date(at).toISOString() : '-'}`;
-    };
+    // 보낸 요청의 observed에는 받은 HTTP 상태만 적습니다. 요청 ID·시각·본문 요약은 실행마다 달라 심판이 다시 보낸 요청 기록과 맞지 않습니다.
     const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
-      observed: await seen(response, 'GET /data.json 토큰 없음') }];
+      observed: `HTTP ${response.status}` }];
     if (config.step >= 3) {
       const probes = [['/api/notes', false, 'anonymous_api_read'], ['/api/notes', true, 'invalid_token_read']];
       // 공지·복원·작전실 점검은 보내지 않고 not_run으로 둡니다. 심판 격리 실행은 /data.json·/api/notes GET만 기록하며, 복원은 POST입니다.
@@ -43,9 +31,7 @@ export async function runAttackChecks(config) {
           redirect: 'error', signal: AbortSignal.timeout(10000),
           ...(invalid ? { headers: { Authorization: 'Bearer invalid' } } : {}),
         });
-        attempts.push({ attackId,
-          expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401',
-          observed: await seen(result, `GET ${path} ${invalid ? 'Authorization: Bearer invalid' : '토큰 없음'}`) });
+        attempts.push({ attackId, expected: '토큰이 없거나 잘못되면 자료 없이 HTTP 401', observed: `HTTP ${result.status}` });
       }
     }
     if (config.step >= 6) {
