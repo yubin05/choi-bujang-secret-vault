@@ -25,7 +25,10 @@ export async function runAttackChecks(config) {
         if (/^[A-Z_]{1,40}$/u.test(body?.error ?? '')) code = ` ${body.error}`;
         if (Array.isArray(body?.notes)) code += ` notes ${body.notes.length}건`;
       } catch { /* JSON이 아닌 응답은 상태만 적습니다. */ }
-      return `HTTP ${result.status}${code} · ${request}`;
+      // 요청 ID·시각은 응답 헤더 값 그대로 적어 심판의 요청 기록과 하나씩 잇습니다. 없으면 '-'입니다.
+      const at = Date.parse(result.headers.get('date') ?? '');
+      return `HTTP ${result.status}${code} · ${request} · 요청 ID ${result.headers.get('x-vercel-id') ?? '-'}`
+        + ` · 시각 ${Number.isFinite(at) ? new Date(at).toISOString() : '-'}`;
     };
     const attempts = [{ attackId: 'anonymous_note_read', expected: '공개 data.json에 메모가 없어야 함',
       observed: await seen(response, 'GET /data.json 토큰 없음') }];

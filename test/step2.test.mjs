@@ -55,8 +55,13 @@ test('2단계 자기 점검은 data.json의 실제 상태·공개 메모 수와 
       ['<html/>', 200, 'HTTP 200'], ['<html/>', 404, 'HTTP 404'], ['error', 500, 'HTTP 500']]) {
       globalThis.fetch = async () => new Response(body, { status });
       const [result] = await runAttackChecks(config);
-      assert.equal(result.observed, `${seen} · GET /data.json 토큰 없음`);
+      assert.equal(result.observed, `${seen} · GET /data.json 토큰 없음 · 요청 ID - · 시각 -`);
     }
+    // 응답 헤더의 요청 ID·시각은 그대로 기록합니다.
+    globalThis.fetch = async () => new Response('<html/>', { status: 404,
+      headers: { 'x-vercel-id': 'icn1::test-1', date: 'Fri, 13 Nov 2026 00:36:08 GMT' } });
+    const [withIds] = await runAttackChecks(config);
+    assert.equal(withIds.observed, 'HTTP 404 · GET /data.json 토큰 없음 · 요청 ID icn1::test-1 · 시각 2026-11-13T00:36:08.000Z');
   } finally {
     globalThis.fetch = originalFetch;
   }
